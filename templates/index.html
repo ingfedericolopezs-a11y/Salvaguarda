@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROESAN - SALVAGUARDAR</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Local Stylesheet -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="background-beams"></div>
+    
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header animate-fade-in">
+            <div class="brand">
+                <span class="logo-icon">🛡️</span>
+                <div>
+                    <h1>ROESAN</h1>
+                    <p class="subtitle">Conciliador Mensual - Póliza Salvaguardar</p>
+                </div>
+            </div>
+            <div class="status-indicator">
+                <span class="pulse-dot"></span>
+                <span>Servidor Activo</span>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="tab-navigation animate-fade-in">
+            <button class="tab-btn active" data-tab="processing-tab">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                <span>Procesar Mes</span>
+            </button>
+            <button class="tab-btn" data-tab="search-tab">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <span>Buscador de Cédulas</span>
+            </button>
+            <button class="tab-btn" data-tab="history-tab">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                <span>Historial de Archivos</span>
+            </button>
+        </nav>
+
+        <!-- Content Area -->
+        <main class="app-main">
+            <!-- Processing Tab -->
+            <section id="processing-tab" class="tab-content active animate-fade-in">
+                <div class="dashboard-grid">
+                    <!-- Left: Uploaders & Actions -->
+                    <div class="card glass-card upload-section">
+                        <h2 class="card-title">Carga de Documentos</h2>
+                        <p class="card-subtitle">Sube el archivo de cobro del mes anterior y los movimientos correspondientes.</p>
+                        
+                        <form id="upload-form" enctype="multipart/form-data">
+                            <!-- Uploader 1: Master File -->
+                            <div class="upload-zone" id="master-dropzone">
+                                <input type="file" id="master_file" name="master_file" accept=".xlsx" class="file-input">
+                                <div class="upload-inner">
+                                    <div class="upload-icon">📊</div>
+                                    <h3>Plantilla Maestro / Cobro Anterior</h3>
+                                    <p class="file-name-label">Arrastra o haz clic para subir (PLANTILLA CARGUE COBRO)</p>
+                                    <span class="file-size-badge hidden" id="master-size"></span>
+                                </div>
+                            </div>
+                            
+                            <!-- Uploader 2: Movements -->
+                            <div class="upload-zone" id="movements-dropzone">
+                                <input type="file" id="movement_files" name="movement_files" accept=".xlsx" multiple class="file-input">
+                                <div class="upload-inner">
+                                    <div class="upload-icon">🔄</div>
+                                    <h3>Archivos de Movimientos (Ingresos y Retiros)</h3>
+                                    <p class="file-name-label">Arrastra o haz clic para subir uno o más archivos (MOVIMIENTO...)</p>
+                                    <div class="selected-files-list hidden" id="movements-list"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Run Button -->
+                            <button type="submit" class="btn btn-primary" id="btn-process" disabled>
+                                <span class="btn-text">Iniciar Conciliación</span>
+                                <span class="spinner hidden"></span>
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Right: Live Logs & Stats -->
+                    <div class="card glass-card console-section">
+                        <div class="console-header">
+                            <h2 class="card-title">Consola de Ejecución</h2>
+                            <span class="console-badge" id="status-badge">Esperando archivos...</span>
+                        </div>
+                        
+                        <!-- Terminal Log -->
+                        <div class="terminal-log" id="logs-container">
+                            <div class="log-line system">[SISTEMA] Selecciona el archivo maestro y de movimientos para comenzar.</div>
+                        </div>
+
+                        <!-- Statistics Grid (visible after run) -->
+                        <div class="stats-grid hidden" id="stats-container">
+                            <div class="stat-card border-purple">
+                                <span class="stat-label">Ingresos</span>
+                                <span class="stat-val text-purple" id="stat-ingresos">0</span>
+                            </div>
+                            <div class="stat-card border-blue">
+                                <span class="stat-label">Retiros</span>
+                                <span class="stat-val text-blue" id="stat-retiros">0</span>
+                            </div>
+                            <div class="stat-card border-green">
+                                <span class="stat-label">Nuevo Maestro</span>
+                                <span class="stat-val text-green" id="stat-master-after">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Generated Files panel (visible after run) -->
+                        <div class="downloads-panel hidden" id="downloads-container">
+                            <h3>Archivos Generados con Éxito:</h3>
+                            <div class="download-buttons">
+                                <a id="dl-movements" href="#" class="btn btn-secondary">
+                                    <span>Download Movimientos</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                </a>
+                                <a id="dl-master" href="#" class="btn btn-accent">
+                                    <span>Download Nueva Plantilla</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview Section (Full Width, visible after run) -->
+                <div class="card glass-card preview-card hidden" id="preview-section">
+                    <div class="preview-header">
+                        <div class="preview-toggles">
+                            <button class="preview-toggle-btn active" id="btn-show-movements">Movimientos Generados</button>
+                            <button class="preview-toggle-btn" id="btn-show-master">Nueva Plantilla de Cobro</button>
+                        </div>
+                        <div class="search-box-sm">
+                            <input type="text" id="preview-search" placeholder="Filtrar datos en vista rápida...">
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table id="preview-table">
+                            <thead>
+                                <tr id="table-headers">
+                                    <!-- Dynamic headers -->
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="preview-footer">
+                        <span id="preview-counter">Mostrando 0 de 0 registros (Vistazo rápido de las primeras 50 filas)</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search Tab -->
+            <section id="search-tab" class="tab-content animate-fade-in">
+                <div class="card glass-card search-card">
+                    <h2 class="card-title">Buscador Universal de Cédulas</h2>
+                    <p class="card-subtitle">Busca un asegurado por número de cédula en todas las plantillas y archivos procesados.</p>
+                    
+                    <div class="search-form-group">
+                        <input type="text" id="search-input" placeholder="Ingrese el número de cédula (Ej. 1007186987)..." autofocus>
+                        <button class="btn btn-primary" id="btn-search">
+                            <span>Buscar</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        </button>
+                    </div>
+
+                    <!-- Search Loader -->
+                    <div class="search-loader hidden" id="search-loader">
+                        <span class="spinner"></span>
+                        <p>Buscando en bases de datos y archivos Excel...</p>
+                    </div>
+
+                    <!-- Search Results Area -->
+                    <div class="search-results hidden" id="search-results-wrapper">
+                        <h3 class="results-heading">Resultados Encontrados (<span id="results-count">0</span>)</h3>
+                        <div class="results-cards-list" id="search-results-list">
+                            <!-- Dynamic card templates -->
+                        </div>
+                    </div>
+                    
+                    <!-- Search Empty State -->
+                    <div class="empty-state hidden" id="search-empty-state">
+                        <div class="empty-icon">🔍</div>
+                        <h3>No se encontraron registros</h3>
+                        <p>Intente con otro número de identificación o verifique que esté en los archivos cargados.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- History/Files Tab -->
+            <section id="history-tab" class="tab-content animate-fade-in">
+                <div class="card glass-card history-card">
+                    <h2 class="card-title">Historial de Archivos en Carpeta</h2>
+                    <p class="card-subtitle">Administra, visualiza y descarga los archivos Excel de tu espacio de trabajo local.</p>
+                    
+                    <div class="history-list-wrapper">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Nombre del Archivo</th>
+                                    <th>Tipo</th>
+                                    <th>Tamaño</th>
+                                    <th>Última Modificación</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-list-body">
+                                <tr>
+                                    <td colspan="5" style="text-align: center;">Cargando archivos del servidor...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="app-footer animate-fade-in">
+            <p>&copy; 2026 ROESAN Seguros. Todos los derechos reservados.</p>
+            <p>Versión 1.0 (Automated Quoting System & Conciliación)</p>
+        </footer>
+    </div>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

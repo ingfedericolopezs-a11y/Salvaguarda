@@ -58,23 +58,25 @@
                         
                         <form id="upload-form" enctype="multipart/form-data">
                             <!-- Uploader 1: Master File -->
-                            <div class="upload-zone" id="master-dropzone">
+                            <div class="upload-zone" id="master-dropzone" title="Arrastra aquí o haz clic para seleccionar">
                                 <input type="file" id="master_file" name="master_file" accept=".xlsx" class="file-input">
                                 <div class="upload-inner">
                                     <div class="upload-icon">📊</div>
                                     <h3>Plantilla Maestro / Cobro Anterior</h3>
-                                    <p class="file-name-label">Arrastra o haz clic para subir (PLANTILLA CARGUE COBRO)</p>
+                                    <p class="file-name-label">Arrastra o haz clic para subir</p>
+                                    <p class="file-hint">(PLANTILLA CARGUE COBRO - Formato: .xlsx)</p>
                                     <span class="file-size-badge hidden" id="master-size"></span>
                                 </div>
                             </div>
-                            
+
                             <!-- Uploader 2: Movements -->
-                            <div class="upload-zone" id="movements-dropzone">
+                            <div class="upload-zone" id="movements-dropzone" title="Arrastra aquí o haz clic para seleccionar múltiples archivos">
                                 <input type="file" id="movement_files" name="movement_files" accept=".xlsx" multiple class="file-input">
                                 <div class="upload-inner">
                                     <div class="upload-icon">🔄</div>
                                     <h3>Archivos de Movimientos (Ingresos y Retiros)</h3>
-                                    <p class="file-name-label">Arrastra o haz clic para subir uno o más archivos (MOVIMIENTO...)</p>
+                                    <p class="file-name-label">Arrastra o haz clic para subir uno o más archivos</p>
+                                    <p class="file-hint">(MOVIMIENTO... - Formato: .xlsx - Puedes seleccionar múltiples)</p>
                                     <div class="selected-files-list hidden" id="movements-list"></div>
                                 </div>
                             </div>
@@ -146,11 +148,12 @@
                 <div class="card glass-card preview-card hidden" id="preview-section">
                     <div class="preview-header">
                         <div class="preview-toggles">
-                            <button class="preview-toggle-btn active" id="btn-show-movements">Movimientos Generados</button>
-                            <button class="preview-toggle-btn" id="btn-show-master">Nueva Plantilla de Cobro</button>
+                            <button class="preview-toggle-btn active" id="btn-show-movements" title="Ver datos de movimientos procesados">Movimientos Generados</button>
+                            <button class="preview-toggle-btn" id="btn-show-master" title="Ver nueva plantilla de cobro">Nueva Plantilla de Cobro</button>
                         </div>
                         <div class="search-box-sm">
-                            <input type="text" id="preview-search" placeholder="Filtrar datos en vista rápida...">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <input type="text" id="preview-search" placeholder="Filtrar datos...">
                         </div>
                     </div>
 

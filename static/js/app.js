@@ -113,39 +113,62 @@ document.addEventListener('DOMContentLoaded', () => {
     setupDropzone(elements.masterDropzone, elements.masterInput, (files) => {
         const file = files[0];
         if (!file.name.endsWith('.xlsx')) {
-            alert('El archivo maestro debe ser Excel (.xlsx)');
+            alert('❌ Error: El archivo debe ser Excel (.xlsx)\n\nArchivo seleccionado: ' + file.name);
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            alert('❌ Error: El archivo es demasiado grande (máx. 10MB)');
             return;
         }
         state.masterFile = file;
-        elements.masterSize.textContent = formatBytes(file.size);
+        elements.masterSize.textContent = `✓ ${formatBytes(file.size)}`;
         elements.masterSize.classList.remove('hidden');
         validateInputs();
     });
 
     // Movement Files
     setupDropzone(elements.movementsDropzone, elements.movementsInput, (files) => {
-        const newFiles = Array.from(files).filter(f => f.name.endsWith('.xlsx'));
-        if (newFiles.length === 0) {
-            alert('Los archivos deben ser Excel (.xlsx)');
-            return;
+        const allFiles = Array.from(files);
+        const validFiles = allFiles.filter(f => f.name.endsWith('.xlsx'));
+        const invalidFiles = allFiles.filter(f => !f.name.endsWith('.xlsx'));
+
+        if (invalidFiles.length > 0) {
+            alert(`⚠️ ${invalidFiles.length} archivo(s) no son válidos (deben ser .xlsx):\n\n${invalidFiles.map(f => f.name).join('\n')}`);
         }
-        state.movementFiles = newFiles;
-        updateMovementsList();
-        validateInputs();
+
+        if (validFiles.length > 0) {
+            state.movementFiles = validFiles;
+            updateMovementsList();
+            validateInputs();
+        } else if (invalidFiles.length > 0) {
+            alert('❌ No hay archivos válidos para cargar');
+        }
     });
 
     function updateMovementsList() {
         elements.movementsList.innerHTML = '';
-        state.movementFiles.forEach(file => {
+        if (state.movementFiles.length === 0) {
+            elements.movementsList.classList.add('hidden');
+            return;
+        }
+
+        const totalSize = state.movementFiles.reduce((sum, f) => sum + f.size, 0);
+        state.movementFiles.forEach((file, idx) => {
             const item = document.createElement('div');
             item.className = 'file-item';
             item.innerHTML = `
+                <span class="file-item-index">${idx + 1}</span>
                 <span class="file-item-name">${file.name}</span>
                 <span class="file-item-size">${formatBytes(file.size)}</span>
             `;
             elements.movementsList.appendChild(item);
         });
-        elements.movementsList.classList.toggle('hidden', state.movementFiles.length === 0);
+
+        const summary = document.createElement('div');
+        summary.className = 'file-items-summary';
+        summary.innerHTML = `✓ ${state.movementFiles.length} archivo(s) - ${formatBytes(totalSize)}`;
+        elements.movementsList.appendChild(summary);
+        elements.movementsList.classList.remove('hidden');
     }
 
     // --- Form Submission ---
@@ -163,52 +186,77 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/process', { method: 'POST', body: formData });
             const result = await response.json();
 
-            if (!response.ok) throw new Error(result.error || 'Error en el servidor');
+            if (!response.ok) {
+                const errorMsg = result.error || 'Error desconocido en el servidor';
+                throw new Error(errorMsg);
+            }
 
             // Update stats
-            elements.statIngresos.textContent = result.statistics.total_ingresos;
-            elements.statRetiros.textContent = result.statistics.total_retiros;
-            elements.statMasterAfter.textContent = result.statistics.master_total_after;
+            elements.statIngresos.textContent = result.statistics.total_ingresos || '0';
+            elements.statRetiros.textContent = result.statistics.total_retiros || '0';
+            elements.statMasterAfter.textContent = result.statistics.master_total_after || '0';
 
             // Setup downloads
             elements.dlMovements.href = `/api/download/${result.filenames.movements}`;
             elements.dlMaster.href = `/api/download/${result.filenames.master}`;
 
             // Store preview data
-            state.previewData.movements = result.preview_movements;
-            state.previewData.master = result.preview_master;
+            state.previewData.movements = result.preview_movements || [];
+            state.previewData.master = result.preview_master || [];
 
             showState('success');
             showPreview('movements');
 
         } catch (error) {
-            alert('Error: ' + error.message);
+            console.error('Processing error:', error);
+            alert('❌ Error en el procesamiento:\n\n' + error.message);
             showState('processing');
         }
     });
 
     // --- Preview Table ---
+    let currentPreviewData = [];
+    let currentPreviewColumns = [];
+
     function showPreview(type) {
         const data = type === 'movements' ? state.previewData.movements : state.previewData.master;
         if (data.length === 0) return;
 
-        const columns = Object.keys(data[0]);
+        currentPreviewData = data;
+        currentPreviewColumns = Object.keys(data[0]);
+        state.currentPreviewTab = type;
 
-        elements.tableHeaders.innerHTML = columns.map(col =>
+        elements.tableHeaders.innerHTML = currentPreviewColumns.map(col =>
             `<th>${col}</th>`
         ).join('');
 
-        elements.tableBody.innerHTML = data.map(row =>
-            `<tr>${columns.map(col => `<td>${row[col] || '-'}</td>`).join('')}</tr>`
-        ).join('');
-
-        elements.previewCounter.textContent = `Mostrando ${data.length} registros (Primeros ${Math.min(50, data.length)})`;
+        renderPreviewTable(data);
 
         elements.btnShowMovements.classList.toggle('active', type === 'movements');
         elements.btnShowMaster.classList.toggle('active', type === 'master');
 
         elements.previewSection.classList.remove('hidden');
+        elements.previewSearch.value = '';
     }
+
+    function renderPreviewTable(data) {
+        elements.tableBody.innerHTML = data.slice(0, 50).map(row =>
+            `<tr>${currentPreviewColumns.map(col => `<td>${row[col] || '-'}</td>`).join('')}</tr>`
+        ).join('');
+        elements.previewCounter.textContent = `${data.length > 50 ? `Mostrando primeras 50 de ${data.length}` : `Mostrando ${data.length}`} registros`;
+    }
+
+    elements.previewSearch?.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase();
+        if (!query) {
+            renderPreviewTable(currentPreviewData);
+            return;
+        }
+        const filtered = currentPreviewData.filter(row =>
+            currentPreviewColumns.some(col => String(row[col] || '').toLowerCase().includes(query))
+        );
+        renderPreviewTable(filtered);
+    });
 
     elements.btnShowMovements?.addEventListener('click', () => showPreview('movements'));
     elements.btnShowMaster?.addEventListener('click', () => showPreview('master'));
@@ -217,7 +265,8 @@ document.addEventListener('DOMContentLoaded', () => {
     async function searchCedula() {
         const query = elements.searchInput.value.trim();
         if (!query) {
-            alert('Ingrese un número de cédula');
+            alert('Por favor ingrese un número de cédula para buscar');
+            elements.searchInput.focus();
             return;
         }
 
@@ -254,7 +303,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 elements.searchResultsWrapper.classList.remove('hidden');
             }
         } catch (error) {
-            alert('Error en la búsqueda: ' + error.message);
+            console.error('Search error:', error);
+            alert('❌ Error en la búsqueda:\n\n' + error.message);
             elements.searchLoader.classList.add('hidden');
         }
     }

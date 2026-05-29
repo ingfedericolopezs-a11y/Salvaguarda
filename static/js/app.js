@@ -698,4 +698,120 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`✓ Page load time: ${pageLoadTime}ms`);
         });
     }
+
+    // ========================================================================
+    // ADVANCED REPORTS
+    // ========================================================================
+
+    /**
+     * Generate PDF Report
+     */
+    const btnGeneratePdf = document.getElementById('btn-generate-pdf');
+    if (btnGeneratePdf) {
+        btnGeneratePdf.addEventListener('click', generatePdfReport);
+    }
+
+    /**
+     * Generate Excel Report
+     */
+    const btnGenerateExcel = document.getElementById('btn-generate-excel');
+    if (btnGenerateExcel) {
+        btnGenerateExcel.addEventListener('click', generateExcelReport);
+    }
+
+    async function generatePdfReport() {
+        try {
+            const btn = elements.btnGeneratePdf;
+            const spinner = btn.querySelector('.spinner');
+            const btnText = btn.querySelector('.btn-text');
+
+            // Disable button and show spinner
+            btn.disabled = true;
+            spinner.classList.remove('hidden');
+            btnText.textContent = 'Generando PDF...';
+
+            const response = await fetch('/api/reports/pdf', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Error al generar PDF');
+            }
+
+            // Success - download the file
+            showNotification('✅ Reporte PDF generado exitosamente', 'success');
+
+            // Create download link
+            const downloadUrl = `/api/reports/download/${result.filename}`;
+            window.open(downloadUrl, '_blank');
+
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            showNotification('❌ Error al generar PDF: ' + error.message, 'error');
+        } finally {
+            // Re-enable button
+            const btn = elements.btnGeneratePdf;
+            const spinner = btn.querySelector('.spinner');
+            const btnText = btn.querySelector('.btn-text');
+
+            btn.disabled = false;
+            spinner.classList.add('hidden');
+            btnText.textContent = '📄 Generar PDF';
+        }
+    }
+
+    async function generateExcelReport() {
+        try {
+            const btn = elements.btnGenerateExcel;
+            const spinner = btn.querySelector('.spinner');
+            const btnText = btn.querySelector('.btn-text');
+
+            // Disable button and show spinner
+            btn.disabled = true;
+            spinner.classList.remove('hidden');
+            btnText.textContent = 'Generando Excel...';
+
+            const response = await fetch('/api/reports/excel', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Error al generar Excel');
+            }
+
+            // Success - download the file
+            showNotification('✅ Reporte Excel generado exitosamente', 'success');
+
+            // Create download link
+            const downloadUrl = `/api/reports/download/${result.filename}`;
+            window.open(downloadUrl, '_blank');
+
+        } catch (error) {
+            console.error('Excel generation error:', error);
+            showNotification('❌ Error al generar Excel: ' + error.message, 'error');
+        } finally {
+            // Re-enable button
+            const btn = elements.btnGenerateExcel;
+            const spinner = btn.querySelector('.spinner');
+            const btnText = btn.querySelector('.btn-text');
+
+            btn.disabled = false;
+            spinner.classList.add('hidden');
+            btnText.textContent = '📊 Generar Excel';
+        }
+    }
+
+    // Add report button references to elements
+    elements.btnGeneratePdf = document.getElementById('btn-generate-pdf');
+    elements.btnGenerateExcel = document.getElementById('btn-generate-excel');
 });

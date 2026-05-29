@@ -621,6 +621,24 @@ body {
     box-shadow: 0 0 30px rgba(6, 182, 212, 0.6);
 }
 
+.btn-gradient {
+    background: linear-gradient(135deg, #7c3aed 0%, #667eea 50%, #06b6d4 100%);
+    color: white;
+    box-shadow: 0 0 20px rgba(124, 58, 237, 0.3);
+    font-weight: var(--font-weight-bold);
+}
+
+.btn-gradient:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(124, 58, 237, 0.5), 0 0 20px rgba(6, 182, 212, 0.4);
+}
+
+.btn-gradient:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .spinner {
     width: 20px;
     height: 20px;
@@ -801,6 +819,15 @@ body {
     display: flex;
     gap: var(--spacing-md);
     flex-wrap: wrap;
+}
+
+/* Reports Section */
+.reports-section {
+    padding: var(--spacing-lg);
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(167, 139, 250, 0.1) 100%);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(124, 58, 237, 0.2);
+    margin-top: var(--spacing-lg);
 }
 
 /* Preview Section */

@@ -22,6 +22,7 @@ from utils import (
     get_file_path, list_files
 )
 from utils.file_handler import create_run_directory, ensure_directories
+from utils.report_generator import ReportGenerator
 
 
 # Configure logging
@@ -41,6 +42,16 @@ app.config['MAX_CONTENT_LENGTH'] = config.MAX_FILE_SIZE
 
 # Ensure directories exist
 ensure_directories(config.UPLOAD_DIR, config.OUTPUT_DIR)
+
+# Initialize report generator
+report_generator = ReportGenerator(config.OUTPUT_DIR)
+
+# Global storage for last processed data (for report generation)
+last_processed_data: Dict[str, Any] = {
+    'movements_df': None,
+    'master_df': None,
+    'analytics': None
+}
 
 EXCEL_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -194,6 +205,15 @@ def process_files() -> Tuple[str, int]:
             config.OUTPUT_DIR
         )
 
+        # Store data for report generation
+        movements_df = result['dataframes']['movements']
+        master_df = result['dataframes']['master']
+        analytics = report_generator.generate_movement_analytics(movements_df, master_df)
+
+        last_processed_data['movements_df'] = movements_df
+        last_processed_data['master_df'] = master_df
+        last_processed_data['analytics'] = analytics
+
         logger.info("Processing completed successfully")
 
         return jsonify({
@@ -321,6 +341,146 @@ def search_cedula() -> Tuple[str, int]:
     except Exception as e:
         logger.error(f"Unexpected error during search: {e}", exc_info=True)
         return jsonify([]), 500
+
+
+@app.route('/api/reports/pdf', methods=['POST'])
+def generate_pdf_report() -> Tuple[str, int]:
+    """
+    Generate an advanced PDF report from the last processed data.
+
+    Returns:
+        Tuple[str, int]: JSON response with report filename or error message
+    """
+    try:
+        # Check if data has been processed
+        if (last_processed_data['movements_df'] is None or
+            last_processed_data['master_df'] is None):
+            return jsonify({
+                'status': 'error',
+                'error': 'No se han procesado datos aún. Por favor, procese archivos primero.'
+            }), 400
+
+        # Generate PDF report
+        movements_df = last_processed_data['movements_df']
+        master_df = last_processed_data['master_df']
+        analytics = last_processed_data['analytics']
+
+        pdf_path = report_generator.generate_pdf_report(
+            movements_df, master_df, analytics
+        )
+
+        filename = os.path.basename(pdf_path)
+        logger.info(f"Generated PDF report: {filename}")
+
+        return jsonify({
+            'status': 'success',
+            'filename': filename,
+            'filepath': pdf_path,
+            'message': 'Reporte PDF generado exitosamente'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error generating PDF report: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'error': 'Error al generar reporte PDF',
+            'details': str(e)
+        }), 500
+
+
+@app.route('/api/reports/excel', methods=['POST'])
+def generate_excel_report() -> Tuple[str, int]:
+    """
+    Generate an advanced Excel report from the last processed data.
+
+    Returns:
+        Tuple[str, int]: JSON response with report filename or error message
+    """
+    try:
+        # Check if data has been processed
+        if (last_processed_data['movements_df'] is None or
+            last_processed_data['master_df'] is None):
+            return jsonify({
+                'status': 'error',
+                'error': 'No se han procesado datos aún. Por favor, procese archivos primero.'
+            }), 400
+
+        # Generate Excel report
+        movements_df = last_processed_data['movements_df']
+        master_df = last_processed_data['master_df']
+        analytics = last_processed_data['analytics']
+
+        excel_path = report_generator.export_to_excel(
+            movements_df, master_df, analytics
+        )
+
+        filename = os.path.basename(excel_path)
+        logger.info(f"Generated Excel report: {filename}")
+
+        return jsonify({
+            'status': 'success',
+            'filename': filename,
+            'filepath': excel_path,
+            'message': 'Reporte Excel generado exitosamente'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error generating Excel report: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'error': 'Error al generar reporte Excel',
+            'details': str(e)
+        }), 500
+
+
+@app.route('/api/reports/download/<path:filename>', methods=['GET'])
+def download_report(filename: str) -> Tuple[Any, int]:
+    """
+    Download a generated report file (PDF or Excel).
+
+    Security: Prevents directory traversal attacks.
+
+    Args:
+        filename: Name of the report file to download
+
+    Returns:
+        Tuple[Any, int]: File object with HTTP status or error JSON response
+    """
+    try:
+        filepath = get_file_path(filename, config.OUTPUT_DIR)
+
+        if not filepath:
+            logger.warning(f"Report file not found: {filename}")
+            return jsonify({'error': 'Reporte no encontrado'}), 404
+
+        # Determine MIME type based on file extension
+        if filename.lower().endswith('.pdf'):
+            mimetype = 'application/pdf'
+        elif filename.lower().endswith('.xlsx'):
+            mimetype = EXCEL_MIMETYPE
+        else:
+            mimetype = 'application/octet-stream'
+
+        logger.info(f"Downloading report: {filename}")
+        return send_file(
+            filepath,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=os.path.basename(filepath)
+        )
+
+    except ValueError as e:
+        logger.warning(f"Invalid report file request: {e}")
+        return jsonify({'error': 'Solicitud de archivo inválida'}), 400
+    except FileNotFoundError as e:
+        logger.warning(f"Report file not found during download {filename}: {e}")
+        return jsonify({'error': 'Reporte no encontrado'}), 404
+    except OSError as e:
+        logger.error(f"File system error downloading report {filename}: {e}", exc_info=True)
+        return jsonify({'error': 'Error al acceder al archivo'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error downloading report {filename}: {e}", exc_info=True)
+        return jsonify({'error': 'Error descargando reporte'}), 500
 
 
 @app.errorhandler(404)

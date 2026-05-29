@@ -32,6 +32,14 @@ A modern web application for processing and reconciling monthly movements (entri
 
 ## Recent Improvements (v1.4+) 🎯
 
+### Advanced Reporting System ✨
+- 📊 **Intelligent Analytics** - Automatic data analysis with statistical breakdowns
+- 📄 **PDF Generation** - Professional reports with matplotlib visualizations
+- 📈 **Excel Export** - Multi-sheet workbooks with statistics and insights
+- 🎯 **Business Insights** - Automatic insight generation (balance, distributions, quality)
+- 🎨 **Professional Formatting** - Color-coded KPIs and charts
+- ⚡ **One-Click Generation** - Simple UI buttons for report creation
+
 ### Code Quality & Type Safety
 - ✅ **Complete Type Hints** - All 25+ functions have full Python 3.9+ type annotations
 - 🔍 **Specific Exception Handling** - 8+ custom exception types instead of generic handling
@@ -360,6 +368,42 @@ For issues, questions, or suggestions:
 - 📖 Documentation: [Wiki/Docs]
 
 ## Changelog
+
+### Version 1.4 (2026-05-29) - Advanced Reporting System 🚀
+- **Comprehensive Report Generation**
+  - PDF reports with professional formatting using matplotlib
+  - Excel reports with multiple analytical sheets
+  - Automatic data analysis and insights generation
+  - KPI displays with color-coded metrics
+  
+- **Analytics Engine**
+  - Movement summary statistics (ingresos, retiros, net movement)
+  - Gender and cargo distribution analysis
+  - Temporal trends and efficiency metrics
+  - Automatic business insights generation
+  
+- **Report Features**
+  - Summary page with 4-panel KPI display
+  - Charts page with distribution visualizations (pie, bar, horizontal bar)
+  - Statistics page with detailed insights and trends
+  - Fallback support for reportlab and text-based reports
+  
+- **Frontend Integration**
+  - New "Reportes Avanzados" section in success state
+  - PDF and Excel generation buttons with loading states
+  - Direct download links with proper MIME type handling
+  - Real-time feedback and error handling
+  
+- **API Endpoints**
+  - `POST /api/reports/pdf` - Generate PDF report
+  - `POST /api/reports/excel` - Generate Excel report
+  - `GET /api/reports/download/<filename>` - Download generated reports
+  
+- **User Experience**
+  - One-click report generation after processing
+  - Professional report formatting
+  - Automatic file download
+  - Clear success/error messages
 
 ### Version 1.3 (2026-05-29) - Premium Typography & Vibrant Gradients
 - **Tipografía Premium**

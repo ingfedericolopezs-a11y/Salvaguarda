@@ -9,7 +9,9 @@ import os
 import glob
 import logging
 from datetime import datetime
+from typing import Tuple, List, Dict, Any, Optional
 
+import pandas as pd
 from flask import Flask, request, jsonify, render_template, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 
@@ -44,30 +46,38 @@ EXCEL_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sh
 
 
 @app.route('/')
-def index():
-    """Serve the main application page."""
+def index() -> str:
+    """
+    Serve the main application page.
+
+    Returns:
+        Rendered HTML template string
+    """
     return render_template('index.html')
 
 
 @app.route('/api/history', methods=['GET'])
-def get_history():
+def get_history() -> Tuple[str, int]:
     """
     List all Excel files available in workspace, uploads, and outputs directories.
 
     Returns:
-        JSON: List of file metadata sorted by modification time
+        Tuple[str, int]: JSON response with file metadata and HTTP status code
     """
     try:
         files_data = list_files(config.WORKSPACE_DIR, config.UPLOAD_DIR, config.OUTPUT_DIR)
-        logger.info(f"Listed {len(files_data)} files")
-        return jsonify(files_data)
+        logger.info(f"Listed {len(files_data)} files successfully")
+        return jsonify(files_data), 200
+    except OSError as e:
+        logger.error(f"File system error listing files: {e}", exc_info=True)
+        return jsonify({'error': 'Error accessing file system'}), 500
     except Exception as e:
-        logger.error(f"Error listing files: {e}")
+        logger.error(f"Unexpected error listing files: {e}", exc_info=True)
         return jsonify({'error': 'Error listing files'}), 500
 
 
 @app.route('/api/download/<path:filename>', methods=['GET'])
-def download_file(filename):
+def download_file(filename: str) -> Tuple[Any, int]:
     """
     Download a file from outputs or workspace directories.
 
@@ -77,7 +87,7 @@ def download_file(filename):
         filename: Name of the file to download
 
     Returns:
-        File object or error response
+        Tuple[Any, int]: File object with HTTP status or error JSON response
     """
     try:
         filepath = get_file_path(
@@ -101,13 +111,19 @@ def download_file(filename):
     except ValueError as e:
         logger.warning(f"Invalid file request: {e}")
         return jsonify({'error': 'Invalid file request'}), 400
+    except FileNotFoundError as e:
+        logger.warning(f"File not found during download {filename}: {e}")
+        return jsonify({'error': 'Archivo no encontrado'}), 404
+    except OSError as e:
+        logger.error(f"File system error downloading {filename}: {e}", exc_info=True)
+        return jsonify({'error': 'Error accessing file'}), 500
     except Exception as e:
-        logger.error(f"Error downloading file {filename}: {e}")
+        logger.error(f"Unexpected error downloading file {filename}: {e}", exc_info=True)
         return jsonify({'error': 'Error downloading file'}), 500
 
 
 @app.route('/api/process', methods=['POST'])
-def process_files():
+def process_files() -> Tuple[str, int]:
     """
     Process master template and movement files to generate reconciliation results.
 
@@ -116,7 +132,7 @@ def process_files():
         - movement_files: One or more movement files (required)
 
     Returns:
-        JSON: Processing results with statistics, previews, and file information
+        Tuple[str, int]: JSON response with processing results and HTTP status code
     """
     # Validate request
     if 'master_file' not in request.files:
@@ -193,11 +209,27 @@ def process_files():
         })
 
     except RequestEntityTooLarge:
-        logger.error("File too large")
+        logger.error("File upload exceeded size limit")
         return jsonify({'error': 'Uno o más archivos es demasiado grande'}), 413
 
+    except OSError as e:
+        logger.error(f"File system error during processing: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'error': 'Error de sistema de archivos',
+            'details': 'Verifique los permisos del servidor'
+        }), 500
+
+    except pd.errors.ParserError as e:
+        logger.error(f"Excel parsing error: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'error': 'Error al leer archivos Excel',
+            'details': 'Verifique el formato de los archivos'
+        }), 400
+
     except Exception as e:
-        logger.error(f"Processing error: {e}", exc_info=True)
+        logger.error(f"Unexpected processing error: {e}", exc_info=True)
         return jsonify({
             'status': 'error',
             'error': str(e),
@@ -206,7 +238,7 @@ def process_files():
 
 
 @app.route('/api/search', methods=['GET'])
-def search_cedula():
+def search_cedula() -> Tuple[str, int]:
     """
     Search for a specific document ID (Cédula) across all local Excel files.
 
@@ -214,80 +246,110 @@ def search_cedula():
         cedula: Document number to search for
 
     Returns:
-        JSON: List of matching records with file and location information
+        Tuple[str, int]: JSON list of matching records with HTTP status code
     """
-    import pandas as pd
-
-    query = request.args.get('cedula', '').strip()
+    query: str = request.args.get('cedula', '').strip()
 
     if not query:
-        return jsonify([])
+        return jsonify([]), 200
 
     # Validate input
-    cleaned_query = clean_id(query)
+    cleaned_query: Optional[str] = clean_id(query)
     if not cleaned_query:
-        logger.warning(f"Invalid search query: {query}")
-        return jsonify([])
+        logger.warning(f"Invalid search query format: {query}")
+        return jsonify([]), 200
 
-    results = []
-    search_paths = [config.WORKSPACE_DIR, config.UPLOAD_DIR, config.OUTPUT_DIR]
-    scanned_files = set()
+    results: List[Dict[str, Any]] = []
+    search_paths: List[str] = [config.WORKSPACE_DIR, config.UPLOAD_DIR, config.OUTPUT_DIR]
+    scanned_files: set = set()
 
-    logger.info(f"Searching for cedula: {cleaned_query}")
+    logger.info(f"Starting search for cedula: {cleaned_query}")
+    start_time = datetime.now()
 
-    for base_path in search_paths:
-        if not os.path.exists(base_path):
-            continue
-
-        for filepath in glob.glob(os.path.join(base_path, "**/*.xlsx"), recursive=True):
-            if os.path.basename(filepath).startswith('~$'):
+    try:
+        for base_path in search_paths:
+            if not os.path.exists(base_path):
+                logger.debug(f"Search path does not exist: {base_path}")
                 continue
 
-            abs_path = os.path.abspath(filepath)
-            if abs_path in scanned_files:
-                continue
-            scanned_files.add(abs_path)
+            for filepath in glob.glob(os.path.join(base_path, "**/*.xlsx"), recursive=True):
+                # Skip temporary Excel files
+                if os.path.basename(filepath).startswith('~$'):
+                    continue
 
-            try:
-                xls = pd.ExcelFile(filepath)
-                for sheet in xls.sheet_names:
-                    try:
-                        df = pd.read_excel(filepath, sheet_name=sheet)
-                        df_str = df.astype(str)
+                abs_path: str = os.path.abspath(filepath)
+                if abs_path in scanned_files:
+                    continue
+                scanned_files.add(abs_path)
 
-                        # Search for exact or partial match
-                        mask = df_str.apply(lambda col: col.str.contains(cleaned_query, na=False))
+                try:
+                    xls: pd.ExcelFile = pd.ExcelFile(filepath)
+                    for sheet in xls.sheet_names:
+                        try:
+                            df: pd.DataFrame = pd.read_excel(filepath, sheet_name=sheet)
 
-                        if mask.any().any():
-                            matching_rows = df[mask.any(axis=1)].replace({float('nan'): None})
-                            for idx, row in matching_rows.iterrows():
-                                results.append({
-                                    'file': os.path.basename(filepath),
-                                    'folder': os.path.basename(os.path.dirname(filepath)) or 'Root',
-                                    'sheet': sheet,
-                                    'row': int(idx) + 2,
-                                    'data': row.to_dict()
-                                })
-                    except Exception as e:
-                        logger.debug(f"Error reading sheet {sheet} in {filepath}: {e}")
+                            # Optimized search: convert to string only for comparison
+                            mask = df.astype(str).apply(
+                                lambda col: col.str.contains(cleaned_query, case=False, na=False)
+                            )
 
-            except Exception as e:
-                logger.debug(f"Error reading file {filepath}: {e}")
+                            # Get matching rows
+                            if mask.any().any():
+                                matching_rows: pd.DataFrame = df[mask.any(axis=1)]
+                                for idx, row in matching_rows.iterrows():
+                                    results.append({
+                                        'file': os.path.basename(filepath),
+                                        'folder': os.path.basename(os.path.dirname(filepath)) or 'Root',
+                                        'sheet': sheet,
+                                        'row': int(idx) + 2,
+                                        'data': row.to_dict()
+                                    })
+                        except pd.errors.ParserError as e:
+                            logger.debug(f"Parser error reading sheet {sheet} in {filepath}: {e}")
+                        except Exception as e:
+                            logger.debug(f"Error reading sheet {sheet} in {filepath}: {e}")
 
-    logger.info(f"Search completed: found {len(results)} matches for {cleaned_query}")
-    return jsonify(results)
+                except pd.errors.PythonExcelError as e:
+                    logger.debug(f"Excel file error for {filepath}: {e}")
+                except Exception as e:
+                    logger.debug(f"Error reading file {filepath}: {e}")
+
+        elapsed_time = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Search completed in {elapsed_time:.2f}s: found {len(results)} matches for {cleaned_query}")
+        return jsonify(results), 200
+
+    except Exception as e:
+        logger.error(f"Unexpected error during search: {e}", exc_info=True)
+        return jsonify([]), 500
 
 
 @app.errorhandler(404)
-def not_found(error):
-    """Handle 404 errors."""
+def not_found(error: Exception) -> Tuple[str, int]:
+    """
+    Handle 404 Not Found errors.
+
+    Args:
+        error: The exception object
+
+    Returns:
+        Tuple[str, int]: JSON error response with 404 status
+    """
+    logger.warning(f"404 error: {error}")
     return jsonify({'error': 'Not found'}), 404
 
 
 @app.errorhandler(500)
-def internal_error(error):
-    """Handle 500 errors."""
-    logger.error(f"Internal server error: {error}")
+def internal_error(error: Exception) -> Tuple[str, int]:
+    """
+    Handle 500 Internal Server errors.
+
+    Args:
+        error: The exception object
+
+    Returns:
+        Tuple[str, int]: JSON error response with 500 status
+    """
+    logger.error(f"Internal server error: {error}", exc_info=True)
     return jsonify({'error': 'Internal server error'}), 500
 
 

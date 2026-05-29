@@ -1,5 +1,8 @@
 """
 Core data processing utilities for Excel file manipulation.
+
+This module handles reading, processing, and writing Excel files for
+the ROESAN-SALVAGUARDAR reconciliation application.
 """
 
 import os
@@ -7,42 +10,61 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import logging
+from typing import Dict, List, Any, Tuple, Optional, Set
 
+import config
 from .validators import clean_id, split_name
 
 logger = logging.getLogger(__name__)
 
 
-def process_excel_files(master_path, movement_paths, header_search_rows=20):
+def process_excel_files(
+    master_path: str,
+    movement_paths: List[str],
+    header_search_rows: int = 20
+) -> Dict[str, Any]:
     """
-    Process master template and movement files.
+    Process master template and movement files for reconciliation.
+
+    Reads the master template, extracts insured individuals, then processes
+    movement files (INGRESOS/RETIROS) to generate reconciliation results.
 
     Args:
-        master_path: Path to master template file
-        movement_paths: List of movement file paths
-        header_search_rows: Number of rows to search for headers
+        master_path: Path to master template file (PLANTILLA CARGUE COBRO)
+        movement_paths: List of movement file paths containing INGRESOS/RETIROS
+        header_search_rows: Number of rows to search for headers (default: 20)
 
     Returns:
-        dict: Processing results with status, statistics, and preview data
+        Dict[str, Any]: Processing results containing:
+            - status: 'success' or 'error'
+            - statistics: Movement counts and master row counts
+            - dataframes: Processed movements and master DataFrames
+            - preview: Preview data for UI
+            - logs: Processing log messages
+            - error: Error message if status is 'error'
 
     Raises:
-        Exception: If processing fails
+        Exception: If master file cannot be read or processing fails
     """
-    logs = []
-    processed_rows = []
-    all_ingresos_ids = set()
-    all_retiros_ids = set()
+    logs: List[str] = []
+    processed_rows: List[Dict[str, Any]] = []
+    all_ingresos_ids: Set[str] = set()
+    all_retiros_ids: Set[str] = set()
 
     # 1. Read Master Template
     try:
-        master_df = _read_excel_safe(master_path)
+        master_df: pd.DataFrame = _read_excel_safe(master_path)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f'Master file not found: {master_path}')
+    except pd.errors.ParserError as e:
+        raise ValueError(f'Invalid Excel format in master file: {e}')
     except Exception as e:
         raise Exception(f'Error reading master file: {e}')
 
     # Build ID lookup from master
-    id_lookup = {}
+    id_lookup: Dict[str, Dict[str, Any]] = {}
     for idx, row in master_df.iterrows():
-        cid = clean_id(row.get('NUMERO_IDENTIFICACION_ASEGURADO'))
+        cid: Optional[str] = clean_id(row.get('NUMERO_IDENTIFICACION_ASEGURADO'))
         if cid:
             id_lookup[cid] = {
                 'CARGO': row.get('CARGO'),
@@ -136,7 +158,7 @@ def process_excel_files(master_path, movement_paths, header_search_rows=20):
                         all_retiros_ids.add(n_id)
 
                     processed_rows.append({
-                        'NUMERO_POLIZA': 23156894,
+                        'NUMERO_POLIZA': config.NUMERO_POLIZA,
                         'APELLIDOS_ASEGURADO': apellidos,
                         'NOMBRES_ASEGURADO': nombres,
                         'TIPO_IDENTIFICACION_ASEGURADO': 'CC',
@@ -214,9 +236,17 @@ def process_excel_files(master_path, movement_paths, header_search_rows=20):
     }
 
 
-def generate_output_files(movements_df, master_df, output_dir):
+def generate_output_files(
+    movements_df: pd.DataFrame,
+    master_df: pd.DataFrame,
+    output_dir: str
+) -> Dict[str, Dict[str, str]]:
     """
     Write processed DataFrames to Excel files.
+
+    Creates two Excel files:
+    - INGRESOS_Y_RETIROS_GENERADOS_[MONTH]_[YEAR].xlsx
+    - PLANTILLA_CARGUE_COBRO_[MONTH]_[YEAR].xlsx
 
     Args:
         movements_df: Processed movements DataFrame
@@ -224,12 +254,14 @@ def generate_output_files(movements_df, master_df, output_dir):
         output_dir: Output directory path
 
     Returns:
-        dict: Filenames and paths of generated files
+        Dict[str, Dict[str, str]]: File metadata with keys 'movements' and 'master',
+            each containing 'filename' and 'path'
 
     Raises:
+        FileNotFoundError: If output directory does not exist
         Exception: If file writing fails
     """
-    current_month = datetime.now().strftime('%B_%Y').upper()
+    current_month: str = datetime.now().strftime('%B_%Y').upper()
 
     filenames = {
         'movements': f"INGRESOS_Y_RETIROS_GENERADOS_{current_month}.xlsx",
@@ -267,29 +299,67 @@ def generate_output_files(movements_df, master_df, output_dir):
 
 # Helper functions
 
-def _read_excel_safe(filepath):
-    """Read Excel file safely, trying different sheet names."""
+def _read_excel_safe(filepath: str) -> pd.DataFrame:
+    """
+    Read Excel file safely, trying different sheet names.
+
+    Attempts to read 'Sheet1' first, then falls back to the last sheet
+    in the workbook if Sheet1 is not found.
+
+    Args:
+        filepath: Path to the Excel file
+
+    Returns:
+        pd.DataFrame: The read Excel data
+
+    Raises:
+        FileNotFoundError: If file does not exist
+        pd.errors.ParserError: If file cannot be parsed
+    """
     try:
         return pd.read_excel(filepath, sheet_name="Sheet1")
     except ValueError:
-        xls = pd.ExcelFile(filepath)
+        xls: pd.ExcelFile = pd.ExcelFile(filepath)
         return pd.read_excel(filepath, sheet_name=xls.sheet_names[-1])
 
 
-def _find_header_row(df_raw, max_rows):
-    """Find header row by searching for identification-related keywords."""
-    keywords = ['IDENTIFICACION', 'C.C.', 'CEDULA', 'N° DOC', 'DOC']
+def _find_header_row(df_raw: pd.DataFrame, max_rows: int) -> int:
+    """
+    Find header row by searching for identification-related keywords.
+
+    Scans up to max_rows looking for common header keywords like
+    IDENTIFICACION, C.C., CEDULA, etc.
+
+    Args:
+        df_raw: Raw DataFrame read without headers
+        max_rows: Maximum number of rows to search
+
+    Returns:
+        int: 0-based index of header row, or -1 if not found
+    """
+    keywords: List[str] = ['IDENTIFICACION', 'C.C.', 'CEDULA', 'N° DOC', 'DOC']
 
     for i in range(min(max_rows, len(df_raw))):
-        row_str = " ".join([str(x).upper() for x in df_raw.iloc[i].values])
+        row_str: str = " ".join([str(x).upper() for x in df_raw.iloc[i].values])
         if any(kw in row_str for kw in keywords):
             return i
 
     return -1
 
 
-def _find_column(columns, keywords):
-    """Find first column matching any of the keywords."""
+def _find_column(columns: List[str], keywords: List[str]) -> Optional[str]:
+    """
+    Find first column matching any of the keywords.
+
+    Performs a case-sensitive substring match against column names.
+
+    Args:
+        columns: List of column names to search
+        keywords: List of keywords to match against
+
+    Returns:
+        str: First matching column name, or None if no match found
+    """
     for col in columns:
         for kw in keywords:
             if kw in col:
@@ -297,8 +367,19 @@ def _find_column(columns, keywords):
     return None
 
 
-def _format_date(date_val):
-    """Format date value to YYYY-MM-DD string."""
+def _format_date(date_val: Any) -> str:
+    """
+    Format date value to YYYY-MM-DD string.
+
+    Handles pandas Timestamp, datetime, and string date values,
+    converting them all to YYYY-MM-DD format.
+
+    Args:
+        date_val: Date value to format (Any type)
+
+    Returns:
+        str: Formatted date string in YYYY-MM-DD format, or empty string if None/NaN
+    """
     if pd.isna(date_val):
         return ""
 

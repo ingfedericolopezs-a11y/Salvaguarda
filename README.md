@@ -319,6 +319,37 @@ For issues, questions, or suggestions:
 
 ## Changelog
 
+### Version 1.3 (2026-05-29) - Premium Typography & Vibrant Gradients
+- **Tipografía Premium**
+  - Brand H1: Aumentado a 1.75rem, peso 800, gradiente multicolor
+  - Card titles: 1.4rem, peso 700, gradientes dinámicos blanco→morado
+  - Upload zone titles: Gradientes con colores brand
+  - Buttons: Peso 700, letter-spacing mejorado, mejor presencia
+  
+- **Gradientes Vibrantes**
+  - Botones: Gradiente 3-colores (#7c3aed → indigo → morado)
+  - Headers: Gradientes cian/morado en bordes superiores
+  - Navigation: Gradiente de fondo sutil mejorado
+  - Stat numbers: Gradiente 3-colores más vibrante
+  
+- **Outline Glow Effects**
+  - Upload zones: Outline glow dinámico en hover
+  - Search input: Glow effects mejorados en focus
+  - Cards: Outline glow sutil para profundidad
+  - Preview search box: Glow effects coordinados
+  
+- **Micro-animaciones**
+  - Quick stats: fadeIn 0.6s para entrada suave
+  - File items summary: slideUp 0.4s con gravedad
+  - Empty icons: Glow drop-shadows animados
+  - All elements: Smooth transitions cubic-bezier
+  
+- **Visual Enhancement**
+  - Stat icons: Aumentados a 3.5rem con glow
+  - Success messages: Mejor feedback visual
+  - Font weights: Aumentados para mayor legibilidad
+  - Color saturation: Más vibrancia en todos los gradientes
+
 ### Version 1.2 (2026-05-29) - Advanced Visual Polish
 - **Premium Visual Effects**
   - Glow effects en botones con shine animation en hover

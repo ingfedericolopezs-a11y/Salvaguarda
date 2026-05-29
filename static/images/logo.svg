@@ -1,7 +1,48 @@
-<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-  <!-- Purple left shape -->
-  <path d="M 8 10 L 20 10 L 28 30 L 20 50 L 8 50 L 0 30 Z" fill="#6B35A8"/>
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logoGradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7c3aed;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#667eea;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="logoGradient2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0ea5e9;stop-opacity:1" />
+    </linearGradient>
+    <filter id="logoGlow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
 
-  <!-- Cyan right shape -->
-  <path d="M 20 16 L 32 16 L 28 30 L 32 44 L 20 44 L 16 30 Z" fill="#00B4D8"/>
+  <!-- Background circle with subtle glow -->
+  <circle cx="60" cy="60" r="58" fill="none" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+
+  <!-- Shield shape - represents protection/security -->
+  <!-- Left side - Purple -->
+  <path d="M 45 25 L 30 35 L 30 55 Q 30 75 45 85 L 45 25"
+        fill="url(#logoGradient1)" filter="url(#logoGlow)"/>
+
+  <!-- Right side - Cyan -->
+  <path d="M 75 25 L 90 35 L 90 55 Q 90 75 75 85 L 75 25"
+        fill="url(#logoGradient2)" filter="url(#logoGlow)"/>
+
+  <!-- Center accent line -->
+  <line x1="60" y1="25" x2="60" y2="85" stroke="#ffffff" stroke-width="1.5" opacity="0.4"/>
+
+  <!-- Checkmark inside shield for verification/trust -->
+  <g transform="translate(60, 55) scale(0.8)">
+    <!-- Checkmark -->
+    <path d="M -8 0 L -2 6 L 8 -6"
+          stroke="#ffffff" stroke-width="2" fill="none"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Top text - company name -->
+  <text x="60" y="105" font-family="Outfit, sans-serif" font-size="10" font-weight="bold"
+        text-anchor="middle" fill="#7c3aed" letter-spacing="1">
+    ROESAN
+  </text>
 </svg>

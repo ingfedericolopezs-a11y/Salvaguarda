@@ -225,16 +225,18 @@ body {
 }
 
 .logo-image {
-    width: 60px;
-    height: 60px;
-    filter: drop-shadow(0 0 20px rgba(124, 58, 237, 0.6)) drop-shadow(0 0 40px rgba(6, 182, 212, 0.3));
+    width: 70px;
+    height: auto;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
     transition: all var(--transition-normal);
     position: relative;
+    border-radius: var(--radius-md);
+    object-fit: contain;
 }
 
 .logo-image:hover {
-    transform: scale(1.15) rotate(8deg);
-    filter: drop-shadow(0 0 30px rgba(124, 58, 237, 0.8)) drop-shadow(0 0 60px rgba(6, 182, 212, 0.5));
+    transform: scale(1.1);
+    filter: drop-shadow(0 8px 24px rgba(124, 58, 237, 0.4)) drop-shadow(0 0 16px rgba(6, 182, 212, 0.2));
 }
 
 .app-header h1 {

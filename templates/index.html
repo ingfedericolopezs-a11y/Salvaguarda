@@ -87,46 +87,56 @@
                         </form>
                     </div>
 
-                    <!-- Right: Live Logs & Stats -->
-                    <div class="card glass-card console-section">
-                        <div class="console-header">
-                            <h2 class="card-title">Consola de Ejecución</h2>
-                            <span class="console-badge" id="status-badge">Esperando archivos...</span>
-                        </div>
-                        
-                        <!-- Terminal Log -->
-                        <div class="terminal-log" id="logs-container">
-                            <div class="log-line system">[SISTEMA] Selecciona el archivo maestro y de movimientos para comenzar.</div>
-                        </div>
+                    <!-- Right: Results Summary -->
+                    <div class="card glass-card results-section">
+                        <h2 class="card-title">Resumen de Resultados</h2>
 
-                        <!-- Statistics Grid (visible after run) -->
-                        <div class="stats-grid hidden" id="stats-container">
-                            <div class="stat-card border-purple">
-                                <span class="stat-label">Ingresos</span>
-                                <span class="stat-val text-purple" id="stat-ingresos">0</span>
-                            </div>
-                            <div class="stat-card border-blue">
-                                <span class="stat-label">Retiros</span>
-                                <span class="stat-val text-blue" id="stat-retiros">0</span>
-                            </div>
-                            <div class="stat-card border-green">
-                                <span class="stat-label">Nuevo Maestro</span>
-                                <span class="stat-val text-green" id="stat-master-after">0</span>
+                        <!-- Processing State -->
+                        <div class="processing-state" id="processing-state">
+                            <div class="empty-message">
+                                <span class="empty-icon">📋</span>
+                                <p>Carga tus archivos y comienza la conciliación</p>
                             </div>
                         </div>
 
-                        <!-- Generated Files panel (visible after run) -->
-                        <div class="downloads-panel hidden" id="downloads-container">
-                            <h3>Archivos Generados con Éxito:</h3>
-                            <div class="download-buttons">
-                                <a id="dl-movements" href="#" class="btn btn-secondary">
-                                    <span>Download Movimientos</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                </a>
-                                <a id="dl-master" href="#" class="btn btn-accent">
-                                    <span>Download Nueva Plantilla</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                </a>
+                        <!-- Loading State (visible during processing) -->
+                        <div class="loading-state hidden" id="loading-state">
+                            <div class="loader"></div>
+                            <p>Procesando archivos...</p>
+                        </div>
+
+                        <!-- Success State (visible after run) -->
+                        <div class="success-state hidden" id="success-state">
+                            <div class="success-icon">✅</div>
+                            <h3>¡Conciliación Completada!</h3>
+
+                            <!-- Quick Stats -->
+                            <div class="quick-stats">
+                                <div class="stat-item">
+                                    <span class="stat-number" id="stat-ingresos">0</span>
+                                    <span class="stat-text">Ingresos Procesados</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-number" id="stat-retiros">0</span>
+                                    <span class="stat-text">Retiros Procesados</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-number" id="stat-master-after">0</span>
+                                    <span class="stat-text">Registros Nuevos</span>
+                                </div>
+                            </div>
+
+                            <!-- Download Section -->
+                            <div class="download-section">
+                                <p class="download-label">Descarga tus archivos:</p>
+                                <div class="download-buttons">
+                                    <a id="dl-movements" href="#" class="btn btn-secondary">
+                                        <span>📥 Movimientos</span>
+                                    </a>
+                                    <a id="dl-master" href="#" class="btn btn-accent">
+                                        <span>📥 Nueva Plantilla</span>
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>

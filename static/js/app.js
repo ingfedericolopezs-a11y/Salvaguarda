@@ -1,25 +1,19 @@
-// Frontend JavaScript Controller for ROESAN-SALVAGUARDAR
+// Frontend JavaScript Controller for ROESAN-SALVAGUARDAR - SIMPLIFIED UI
 
 document.addEventListener('DOMContentLoaded', () => {
-    // State management
     let state = {
         masterFile: null,
         movementFiles: [],
-        previewData: {
-            movements: [],
-            master: []
-        },
-        currentPreviewTab: 'movements', // or 'master'
+        previewData: { movements: [], master: [] },
+        currentPreviewTab: 'movements',
         historyData: []
     };
 
     // DOM Elements
     const elements = {
-        // Tabs
         tabBtns: document.querySelectorAll('.tab-btn'),
         tabContents: document.querySelectorAll('.tab-content'),
-        
-        // Upload form
+
         uploadForm: document.getElementById('upload-form'),
         masterDropzone: document.getElementById('master-dropzone'),
         masterInput: document.getElementById('master_file'),
@@ -28,18 +22,18 @@ document.addEventListener('DOMContentLoaded', () => {
         movementsInput: document.getElementById('movement_files'),
         movementsList: document.getElementById('movements-list'),
         btnProcess: document.getElementById('btn-process'),
-        
-        // Console / Stats / Downloads
-        logsContainer: document.getElementById('logs-container'),
-        statusBadge: document.getElementById('status-badge'),
-        statsContainer: document.getElementById('stats-container'),
+
+        // Results States
+        processingState: document.getElementById('processing-state'),
+        loadingState: document.getElementById('loading-state'),
+        successState: document.getElementById('success-state'),
+
         statIngresos: document.getElementById('stat-ingresos'),
         statRetiros: document.getElementById('stat-retiros'),
         statMasterAfter: document.getElementById('stat-master-after'),
-        downloadsContainer: document.getElementById('downloads-container'),
         dlMovements: document.getElementById('dl-movements'),
         dlMaster: document.getElementById('dl-master'),
-        
+
         // Preview section
         previewSection: document.getElementById('preview-section'),
         btnShowMovements: document.getElementById('btn-show-movements'),
@@ -48,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tableHeaders: document.getElementById('table-headers'),
         tableBody: document.getElementById('table-body'),
         previewCounter: document.getElementById('preview-counter'),
-        
+
         // Search tab
         searchInput: document.getElementById('search-input'),
         btnSearch: document.getElementById('btn-search'),
@@ -57,8 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
         searchResultsList: document.getElementById('search-results-list'),
         resultsCount: document.getElementById('results-count'),
         searchEmptyState: document.getElementById('search-empty-state'),
-        
-        // History tab
+
         historyListBody: document.getElementById('history-list-body')
     };
 
@@ -66,437 +59,237 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             const targetTab = btn.getAttribute('data-tab');
-            
-            // Toggle active buttons
             elements.tabBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            
-            // Toggle active contents
             elements.tabContents.forEach(content => {
                 content.classList.remove('active');
-                if (content.id === targetTab) {
-                    content.classList.add('active');
-                }
+                if (content.id === targetTab) content.classList.add('active');
             });
-            
-            // Action on tab entry
-            if (targetTab === 'history-tab') {
-                loadHistory();
-            }
+            if (targetTab === 'history-tab') loadHistory();
         });
     });
 
     // --- Helper functions ---
-    function formatBytes(bytes, decimals = 2) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const dm = decimals < 0 ? 0 : decimals;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-    }
-
-    function addLogLine(message, type = 'system') {
-        const line = document.createElement('div');
-        line.className = `log-line ${type}`;
-        
-        const timestamp = new Date().toLocaleTimeString();
-        line.innerText = `[${timestamp}] ${message}`;
-        
-        elements.logsContainer.appendChild(line);
-        elements.logsContainer.scrollTop = elements.logsContainer.scrollHeight;
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
 
     function validateInputs() {
-        const isValid = state.masterFile !== null && state.movementFiles.length > 0;
-        elements.btnProcess.disabled = !isValid;
+        elements.btnProcess.disabled = !(state.masterFile && state.movementFiles.length > 0);
     }
 
-    // --- File Uploader Interactive Features ---
-    
-    // Dropzone events helper
+    function showState(stateName) {
+        elements.processingState.classList.add('hidden');
+        elements.loadingState.classList.add('hidden');
+        elements.successState.classList.add('hidden');
+
+        if (stateName === 'processing') elements.processingState.classList.remove('hidden');
+        else if (stateName === 'loading') elements.loadingState.classList.remove('hidden');
+        else if (stateName === 'success') elements.successState.classList.remove('hidden');
+    }
+
+    // --- File Upload Handlers ---
     function setupDropzone(zone, input, onFilesSelected) {
         zone.addEventListener('click', () => input.click());
-        
         zone.addEventListener('dragover', (e) => {
             e.preventDefault();
             zone.classList.add('dragover');
         });
-        
-        zone.addEventListener('dragleave', () => {
-            zone.classList.remove('dragover');
-        });
-        
+        zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
         zone.addEventListener('drop', (e) => {
             e.preventDefault();
             zone.classList.remove('dragover');
-            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                onFilesSelected(e.dataTransfer.files);
-            }
+            if (e.dataTransfer.files.length > 0) onFilesSelected(e.dataTransfer.files);
         });
-        
         input.addEventListener('change', () => {
-            if (input.files && input.files.length > 0) {
-                onFilesSelected(input.files);
-            }
+            if (input.files.length > 0) onFilesSelected(input.files);
         });
     }
 
-    // Master File Select handler
+    // Master File
     setupDropzone(elements.masterDropzone, elements.masterInput, (files) => {
         const file = files[0];
         if (!file.name.endsWith('.xlsx')) {
-            addLogLine(`[!] Error: El archivo maestro debe ser formato Excel (.xlsx).`, 'error');
+            alert('El archivo maestro debe ser Excel (.xlsx)');
             return;
         }
         state.masterFile = file;
-        
-        // Update UI
-        const label = elements.masterDropzone.querySelector('.file-name-label');
-        label.innerText = file.name;
-        label.style.color = '#ffffff';
-        label.style.fontWeight = '500';
-        
-        elements.masterSize.innerText = formatBytes(file.size);
+        elements.masterSize.textContent = formatBytes(file.size);
         elements.masterSize.classList.remove('hidden');
-        
-        addLogLine(`Archivo maestro cargado: ${file.name} (${formatBytes(file.size)})`);
         validateInputs();
     });
 
-    // Movement Files Select handler
+    // Movement Files
     setupDropzone(elements.movementsDropzone, elements.movementsInput, (files) => {
-        const newFiles = Array.from(files).filter(file => {
-            if (!file.name.endsWith('.xlsx')) {
-                addLogLine(`[!] Ignorado archivo no Excel: ${file.name}`, 'warn');
-                return false;
-            }
-            return true;
-        });
-        
-        if (newFiles.length === 0) return;
-        
-        // Add to our list
-        state.movementFiles = [...state.movementFiles, ...newFiles];
-        
-        // Update UI list
+        const newFiles = Array.from(files).filter(f => f.name.endsWith('.xlsx'));
+        if (newFiles.length === 0) {
+            alert('Los archivos deben ser Excel (.xlsx)');
+            return;
+        }
+        state.movementFiles = newFiles;
+        updateMovementsList();
+        validateInputs();
+    });
+
+    function updateMovementsList() {
         elements.movementsList.innerHTML = '';
-        state.movementFiles.forEach((file) => {
+        state.movementFiles.forEach(file => {
             const item = document.createElement('div');
             item.className = 'file-item';
             item.innerHTML = `
-                <span class="file-item-name">📄 ${file.name}</span>
+                <span class="file-item-name">${file.name}</span>
                 <span class="file-item-size">${formatBytes(file.size)}</span>
             `;
             elements.movementsList.appendChild(item);
         });
-        
-        elements.movementsList.classList.remove('hidden');
-        const label = elements.movementsDropzone.querySelector('.file-name-label');
-        label.innerText = `${state.movementFiles.length} archivo(s) de movimientos seleccionado(s)`;
-        label.style.color = '#a5b4fc';
-        
-        addLogLine(`Cargados ${newFiles.length} archivos de movimientos.`);
-        validateInputs();
-    });
+        elements.movementsList.classList.toggle('hidden', state.movementFiles.length === 0);
+    }
 
-    // --- Form submit (Pipeline running) ---
+    // --- Form Submission ---
     elements.uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        if (!state.masterFile || state.movementFiles.length === 0) return;
-        
-        // UI states
-        elements.btnProcess.disabled = true;
-        elements.btnProcess.querySelector('.btn-text').innerText = 'Conciliando...';
-        elements.btnProcess.querySelector('.spinner').classList.remove('hidden');
-        elements.statusBadge.innerText = 'Procesando en servidor...';
-        elements.statusBadge.style.color = '#fbbf24';
-        
-        elements.statsContainer.classList.add('hidden');
-        elements.downloadsContainer.classList.add('hidden');
-        elements.previewSection.classList.add('hidden');
-        
-        elements.logsContainer.innerHTML = '';
-        addLogLine('Iniciando carga de archivos y procesamiento...', 'system');
-        
-        // Build payload
+
         const formData = new FormData();
         formData.append('master_file', state.masterFile);
-        state.movementFiles.forEach(file => {
-            formData.append('movement_files', file);
-        });
-        
+        state.movementFiles.forEach(f => formData.append('movement_files', f));
+
+        showState('loading');
+        elements.previewSection.classList.add('hidden');
+
         try {
-            const response = await fetch('/api/process', {
-                method: 'POST',
-                body: formData
-            });
-            
+            const response = await fetch('/api/process', { method: 'POST', body: formData });
             const result = await response.json();
-            
-            if (response.ok && result.status === 'success') {
-                // Populate logs
-                result.logs.forEach(logMsg => {
-                    let logType = 'system';
-                    if (logMsg.includes('[!] Error')) logType = 'error';
-                    else if (logMsg.includes('[!]')) logType = 'warn';
-                    addLogLine(logMsg, logType);
-                });
-                
-                // Show Statistics
-                elements.statIngresos.innerText = result.statistics.total_ingresos;
-                elements.statRetiros.innerText = result.statistics.total_retiros;
-                elements.statMasterAfter.innerText = result.statistics.master_total_after;
-                elements.statsContainer.classList.remove('hidden');
-                
-                // Set download buttons
-                elements.dlMovements.href = `/api/download/${result.filenames.movements}`;
-                elements.dlMovements.setAttribute('download', result.filenames.movements);
-                elements.dlMovements.querySelector('span').innerText = `Movimientos (${result.statistics.total_movements} filas)`;
-                
-                elements.dlMaster.href = `/api/download/${result.filenames.master}`;
-                elements.dlMaster.setAttribute('download', result.filenames.master);
-                elements.dlMaster.querySelector('span').innerText = `Nuevo Maestro (${result.statistics.master_total_after} filas)`;
-                
-                elements.downloadsContainer.classList.remove('hidden');
-                
-                // Save preview data
-                state.previewData.movements = result.preview_movements;
-                state.previewData.master = result.preview_master;
-                
-                // Render preview
-                state.currentPreviewTab = 'movements';
-                elements.btnShowMovements.classList.add('active');
-                elements.btnShowMaster.classList.remove('active');
-                renderPreviewTable();
-                elements.previewSection.classList.remove('hidden');
-                
-                elements.statusBadge.innerText = 'Finalizado con éxito';
-                elements.statusBadge.style.color = '#10b981';
-                addLogLine('Proceso de conciliación finalizado correctamente.', 'system');
-            } else {
-                elements.statusBadge.innerText = 'Error en ejecución';
-                elements.statusBadge.style.color = '#ef4444';
-                addLogLine(`[!] Error: ${result.error || 'Ocurrió un error inesperado.'}`, 'error');
-                if (result.details) {
-                    console.error(result.details);
-                    addLogLine(`Detalles:\n${result.details.substring(0, 300)}...`, 'error');
-                }
-            }
+
+            if (!response.ok) throw new Error(result.error || 'Error en el servidor');
+
+            // Update stats
+            elements.statIngresos.textContent = result.statistics.total_ingresos;
+            elements.statRetiros.textContent = result.statistics.total_retiros;
+            elements.statMasterAfter.textContent = result.statistics.master_total_after;
+
+            // Setup downloads
+            elements.dlMovements.href = `/api/download/${result.filenames.movements}`;
+            elements.dlMaster.href = `/api/download/${result.filenames.master}`;
+
+            // Store preview data
+            state.previewData.movements = result.preview_movements;
+            state.previewData.master = result.preview_master;
+
+            showState('success');
+            showPreview('movements');
+
         } catch (error) {
-            elements.statusBadge.innerText = 'Error de conexión';
-            elements.statusBadge.style.color = '#ef4444';
-            addLogLine(`[!] Error de red o comunicación con el servidor.`, 'error');
-            console.error(error);
-        } finally {
-            elements.btnProcess.disabled = false;
-            elements.btnProcess.querySelector('.btn-text').innerText = 'Iniciar Conciliación';
-            elements.btnProcess.querySelector('.spinner').classList.add('hidden');
+            alert('Error: ' + error.message);
+            showState('processing');
         }
     });
 
-    // --- Dynamic Preview Rendering ---
-    
-    function renderPreviewTable() {
-        const data = state.currentPreviewTab === 'movements' 
-            ? state.previewData.movements 
-            : state.previewData.master;
-            
-        elements.tableHeaders.innerHTML = '';
-        elements.tableBody.innerHTML = '';
-        
-        if (data.length === 0) {
-            elements.tableBody.innerHTML = `<tr><td colspan="11" style="text-align:center;">No hay datos para mostrar</td></tr>`;
-            elements.previewCounter.innerText = 'Mostrando 0 de 0 registros';
+    // --- Preview Table ---
+    function showPreview(type) {
+        const data = type === 'movements' ? state.previewData.movements : state.previewData.master;
+        if (data.length === 0) return;
+
+        const columns = Object.keys(data[0]);
+
+        elements.tableHeaders.innerHTML = columns.map(col =>
+            `<th>${col}</th>`
+        ).join('');
+
+        elements.tableBody.innerHTML = data.map(row =>
+            `<tr>${columns.map(col => `<td>${row[col] || '-'}</td>`).join('')}</tr>`
+        ).join('');
+
+        elements.previewCounter.textContent = `Mostrando ${data.length} registros (Primeros ${Math.min(50, data.length)})`;
+
+        elements.btnShowMovements.classList.toggle('active', type === 'movements');
+        elements.btnShowMaster.classList.toggle('active', type === 'master');
+
+        elements.previewSection.classList.remove('hidden');
+    }
+
+    elements.btnShowMovements?.addEventListener('click', () => showPreview('movements'));
+    elements.btnShowMaster?.addEventListener('click', () => showPreview('master'));
+
+    // --- Search Tab ---
+    async function searchCedula() {
+        const query = elements.searchInput.value.trim();
+        if (!query) {
+            alert('Ingrese un número de cédula');
             return;
         }
 
-        // Get headers from first record keys
-        const headers = Object.keys(data[0]);
-        headers.forEach(h => {
-            const th = document.createElement('th');
-            th.innerText = h.replace(/_/g, ' ');
-            elements.tableHeaders.appendChild(th);
-        });
-
-        // Filter search logic
-        const query = elements.previewSearch.value.toLowerCase().trim();
-        const filteredData = data.filter(row => {
-            if (!query) return true;
-            return Object.values(row).some(val => 
-                String(val).toLowerCase().includes(query)
-            );
-        });
-
-        // Append rows
-        filteredData.forEach(row => {
-            const tr = document.createElement('tr');
-            headers.forEach(h => {
-                const td = document.createElement('td');
-                const val = row[h];
-                td.innerText = val !== null && val !== undefined ? val : '';
-                tr.appendChild(td);
-            });
-            elements.tableBody.appendChild(tr);
-        });
-
-        elements.previewCounter.innerText = `Mostrando ${filteredData.length} de ${data.length} registros (Vista previa de las primeras 50 filas)`;
-    }
-
-    elements.btnShowMovements.addEventListener('click', () => {
-        state.currentPreviewTab = 'movements';
-        elements.btnShowMovements.classList.add('active');
-        elements.btnShowMaster.classList.remove('active');
-        elements.previewSearch.value = '';
-        renderPreviewTable();
-    });
-
-    elements.btnShowMaster.addEventListener('click', () => {
-        state.currentPreviewTab = 'master';
-        elements.btnShowMaster.classList.add('active');
-        elements.btnShowMovements.classList.remove('active');
-        elements.previewSearch.value = '';
-        renderPreviewTable();
-    });
-
-    elements.previewSearch.addEventListener('input', () => {
-        renderPreviewTable();
-    });
-
-    // --- Search Cédulas Tab ---
-    
-    async function triggerSearch() {
-        const query = elements.searchInput.value.trim();
-        if (!query) return;
-        
         elements.searchLoader.classList.remove('hidden');
         elements.searchResultsWrapper.classList.add('hidden');
         elements.searchEmptyState.classList.add('hidden');
-        
+
         try {
             const response = await fetch(`/api/search?cedula=${encodeURIComponent(query)}`);
             const results = await response.json();
-            
+
             elements.searchLoader.classList.add('hidden');
-            
-            if (results && results.length > 0) {
-                elements.resultsCount.innerText = results.length;
-                elements.searchResultsList.innerHTML = '';
-                
-                results.forEach(res => {
-                    const card = document.createElement('div');
-                    card.className = 'result-row-card';
-                    
-                    // Render details key values
-                    let detailsHtml = '';
-                    const fields = [
-                        { label: 'Identificación', key: 'NUMERO_IDENTIFICACION_ASEGURADO' },
-                        { label: 'Apellidos', key: 'APELLIDOS_ASEGURADO' },
-                        { label: 'Nombres', key: 'NOMBRES_ASEGURADO' },
-                        { label: 'Cargo', key: 'CARGO' },
-                        { label: 'Género', key: 'GENERO' },
-                        { label: 'Fecha Nacimiento', key: 'FECHA_NACIMIENTO_ASEGURADO' },
-                        { label: 'Valor Asegurado', key: 'VALOR_ASEGURADO_MUERTE' },
-                        { label: 'Tipo Novedad', key: 'TIPO_NOVEDAD' },
-                        { label: 'Fecha Novedad', key: 'FECHA_NOVEDAD' }
-                    ];
-                    
-                    fields.forEach(f => {
-                        const val = res.data[f.key] || res.data[f.key.toLowerCase()] || res.data[f.label.toUpperCase().replace(/ /g, '_')];
-                        if (val !== undefined && val !== null) {
-                            detailsHtml += `
-                                <div class="detail-item">
-                                    <span class="detail-label">${f.label}</span>
-                                    <span class="detail-value">${val}</span>
-                                </div>
-                            `;
-                        }
-                    });
-                    
-                    // In case columns are different, show other non-null entries
-                    if (!detailsHtml) {
-                        Object.keys(res.data).forEach(k => {
-                            if (res.data[k] !== null && res.data[k] !== '') {
-                                detailsHtml += `
-                                    <div class="detail-item">
-                                        <span class="detail-label">${k.replace(/_/g, ' ')}</span>
-                                        <span class="detail-value">${res.data[k]}</span>
-                                    </div>
-                                `;
-                            }
-                        });
-                    }
-                    
-                    card.innerHTML = `
+
+            if (results.length === 0) {
+                elements.searchEmptyState.classList.remove('hidden');
+            } else {
+                elements.resultsCount.textContent = results.length;
+                elements.searchResultsList.innerHTML = results.map(result => `
+                    <div class="result-row-card">
                         <div class="result-row-meta">
-                            <span class="result-file-title">📁 [${res.folder}] ${res.file}</span>
-                            <span class="result-sheet-badge">Hoja: ${res.sheet} | Fila: ${res.row}</span>
+                            <span class="result-file-title">📄 ${result.file}</span>
+                            <span class="result-sheet-badge">${result.sheet}</span>
                         </div>
                         <div class="result-row-details">
-                            ${detailsHtml}
+                            ${Object.entries(result.data).map(([key, val]) => `
+                                <div class="detail-item">
+                                    <span class="detail-label">${key}</span>
+                                    <span class="detail-value">${val || '-'}</span>
+                                </div>
+                            `).join('')}
                         </div>
-                    `;
-                    elements.searchResultsList.appendChild(card);
-                });
-                
+                    </div>
+                `).join('');
                 elements.searchResultsWrapper.classList.remove('hidden');
-            } else {
-                elements.searchEmptyState.classList.remove('hidden');
             }
         } catch (error) {
+            alert('Error en la búsqueda: ' + error.message);
             elements.searchLoader.classList.add('hidden');
-            addLogLine(`[!] Error de red al buscar la cédula en el servidor.`, 'error');
-            console.error(error);
         }
     }
 
-    elements.btnSearch.addEventListener('click', triggerSearch);
-    elements.searchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            triggerSearch();
-        }
+    elements.btnSearch?.addEventListener('click', searchCedula);
+    elements.searchInput?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') searchCedula();
     });
 
-    // --- History Files Tab ---
-    
+    // --- History Tab ---
     async function loadHistory() {
-        elements.historyListBody.innerHTML = `<tr><td colspan="5" style="text-align: center;">Cargando archivos del servidor...</td></tr>`;
-        
         try {
             const response = await fetch('/api/history');
-            const data = await response.json();
-            
-            elements.historyListBody.innerHTML = '';
-            
-            if (data.length === 0) {
-                elements.historyListBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No hay archivos Excel disponibles en el servidor</td></tr>`;
+            const files = await response.json();
+
+            if (files.length === 0) {
+                elements.historyListBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No hay archivos</td></tr>';
                 return;
             }
-            
-            data.forEach(item => {
-                const tr = document.createElement('tr');
-                const dateStr = item.modified || '';
-                const typeBadge = item.type === 'output' 
-                    ? `<span class="file-type-badge output">Salida</span>`
-                    : `<span class="file-type-badge workspace">Maestro/Raíz</span>`;
-                    
-                tr.innerHTML = `
-                    <td style="color: #ffffff; font-weight: 500;">📊 ${item.name}</td>
-                    <td>${typeBadge}</td>
-                    <td>${formatBytes(item.size)}</td>
-                    <td>${dateStr}</td>
-                    <td>
-                        <a href="/api/download/${encodeURIComponent(item.name)}" download="${item.name}" class="btn btn-secondary" style="width: auto; padding: 0.35rem 0.8rem; font-size: 0.8rem; border-radius: 4px; display: inline-flex;">
-                            <span>Descargar</span>
-                        </a>
-                    </td>
-                `;
-                elements.historyListBody.appendChild(tr);
-            });
+
+            elements.historyListBody.innerHTML = files.map(file => `
+                <tr>
+                    <td>${file.name}</td>
+                    <td><span class="file-type-badge ${file.type}">${file.type}</span></td>
+                    <td>${formatBytes(file.size)}</td>
+                    <td>${file.modified}</td>
+                    <td><a href="/api/download/${file.name}" class="btn btn-secondary" style="font-size:0.8rem;padding:0.4rem 0.8rem;">Descargar</a></td>
+                </tr>
+            `).join('');
         } catch (error) {
-            elements.historyListBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--color-error);">Error al cargar archivos de historial</td></tr>`;
-            console.error(error);
+            elements.historyListBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:red;">Error cargando archivos</td></tr>';
         }
     }
+
+    // Initial state
+    validateInputs();
+    showState('processing');
 });

@@ -1,20 +1,20 @@
 /* Stylesheet for ROESAN-SALVAGUARDAR Web UI */
 
 :root {
-    --bg-main: #070a13;
-    --bg-gradient-start: #0a0e1a;
-    --bg-gradient-end: #121026;
-    --glass-bg: rgba(15, 22, 42, 0.65);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --glass-highlight: rgba(255, 255, 255, 0.03);
-    
+    --bg-main: #0f1117;
+    --bg-gradient-start: #0d0f1a;
+    --bg-gradient-end: #1a1f3a;
+    --glass-bg: rgba(15, 17, 35, 0.7);
+    --glass-border: rgba(107, 53, 168, 0.1);
+    --glass-highlight: rgba(0, 180, 216, 0.05);
+
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --text-muted: #64748b;
-    
-    --accent-indigo: #6366f1;
-    --accent-purple: #8b5cf6;
-    --accent-magenta: #d946ef;
+
+    --accent-indigo: #6B35A8;
+    --accent-purple: #5B2A8F;
+    --accent-magenta: #00B4D8;
     
     --color-success: #10b981;
     --color-error: #ef4444;
@@ -111,12 +111,11 @@ body {
     gap: 1rem;
 }
 
-.logo-icon {
-    font-size: 2.2rem;
-    background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 2px 8px rgba(99, 102, 241, 0.3));
+.logo-image {
+    height: 3rem;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 8px rgba(107, 53, 168, 0.2));
 }
 
 .brand h1 {

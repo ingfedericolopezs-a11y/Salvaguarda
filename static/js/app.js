@@ -78,7 +78,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function validateInputs() {
-        elements.btnProcess.disabled = !(state.masterFile && state.movementFiles.length > 0);
+        const hasFiles = state.masterFile && state.movementFiles.length > 0;
+        elements.btnProcess.disabled = !hasFiles;
+        if (hasFiles) {
+            elements.btnProcess.title = 'Hacer clic para procesar los archivos';
+        } else {
+            elements.btnProcess.title = 'Carga ambos tipos de archivos para procesar';
+        }
     }
 
     function showState(stateName) {
@@ -311,7 +317,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.btnSearch?.addEventListener('click', searchCedula);
     elements.searchInput?.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') searchCedula();
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            searchCedula();
+        }
+    });
+
+    // Allow clearing search results
+    elements.searchInput?.addEventListener('input', (e) => {
+        if (!e.target.value.trim()) {
+            elements.searchEmptyState.classList.add('hidden');
+            elements.searchResultsWrapper.classList.add('hidden');
+        }
     });
 
     // --- History Tab ---

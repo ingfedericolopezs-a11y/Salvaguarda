@@ -9,9 +9,13 @@ A modern web application for processing and reconciling monthly movements (entri
 - 📊 **Master Template Processing** - Upload and process master billing templates
 - 🔄 **Movement Files Integration** - Merge and reconcile entry/withdrawal movements
 - 🔍 **Cedula Search** - Search for specific insured individuals across all files
-- 📁 **File Management** - Organize and download processed files
-- 📈 **Real-time Processing Logs** - Monitor processing progress with live feedback
-- 🎨 **Modern UI** - Beautiful, responsive glass-morphism design
+- 📁 **File Management** - Organize and download processed files with detailed history
+- 📈 **Progress Indicators** - Visual progress bars during file processing
+- 🎨 **Modern UI** - Beautiful, responsive glass-morphism design with ROESAN brand colors
+- ⚡ **Dynamic Data Filtering** - Real-time table filtering in preview section
+- 🎯 **Enhanced Validation** - Comprehensive file and input validation with helpful error messages
+- 📱 **Fully Responsive** - Optimized for desktop, tablet, and mobile devices
+- ✅ **File Selection Feedback** - Visual feedback for file selection with size summaries
 
 ## System Requirements
 
@@ -314,6 +318,27 @@ For issues, questions, or suggestions:
 - 📖 Documentation: [Wiki/Docs]
 
 ## Changelog
+
+### Version 1.1 (2026-05-29) - Enhanced UI/UX
+- **Visual Improvements**
+  - Added ROESAN brand logo and color scheme
+  - Enhanced upload zones with better visual feedback
+  - Improved table styling with gradient headers
+  - Better hover effects and animations throughout
+  - Visual progress bar during processing
+  
+- **Functional Improvements**
+  - Real-time table data filtering
+  - Better file validation with detailed error messages
+  - File selection counter with size summary
+  - Enhanced search functionality with keyboard support
+  - Improved error handling and user feedback
+  
+- **UI Enhancements**
+  - Better tooltips and helpful hints
+  - Smooth transitions and animations
+  - Improved responsive design
+  - Better color consistency with brand identity
 
 ### Version 1.0 (2026-05-29)
 - Initial release

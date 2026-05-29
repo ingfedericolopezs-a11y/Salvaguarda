@@ -319,6 +319,27 @@ For issues, questions, or suggestions:
 
 ## Changelog
 
+### Version 1.2 (2026-05-29) - Advanced Visual Polish
+- **Premium Visual Effects**
+  - Glow effects en botones con shine animation en hover
+  - Sombras dinámicas y profundas para mayor profundidad
+  - Gradientes mejorados en cards, buttons y componentes
+  - Focus states refinados con glow effects en inputs
+  
+- **Componente Styling**
+  - Botones: Efectos shine, sombras mejoradas, mejor feedback
+  - Cards: Sombras multicapa, colores vibrantes, hover elevado
+  - Upload zones: Gradientes sofisticados, sombras interiores
+  - Tablas: Headers con gradientes, row hovers suaves
+  - File items: Styling mejorado con gradientes y hover effects
+  - Stat cards: Mejor visual con sombras y transiciones
+  
+- **Interactividad**
+  - Transiciones suaves en toda la interfaz (cubic-bezier)
+  - Hover effects coordinados y pronunciados
+  - Color scheme cohesivo: Morado (#6B35A8) + Cian (#00B4D8)
+  - Better visual feedback en todas las interacciones
+
 ### Version 1.1 (2026-05-29) - Enhanced UI/UX
 - **Visual Improvements**
   - Added ROESAN brand logo and color scheme

@@ -814,4 +814,140 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add report button references to elements
     elements.btnGeneratePdf = document.getElementById('btn-generate-pdf');
     elements.btnGenerateExcel = document.getElementById('btn-generate-excel');
+
+    // Reports Tab Elements
+    elements.btnReportPdf = document.getElementById('btn-report-pdf');
+    elements.btnReportExcel = document.getElementById('btn-report-excel');
+    elements.reportsEmptyState = document.getElementById('reports-empty-state');
+
+    // Reports functionality
+    let chartInstance = null;
+    let lastReportData = null;
+
+    function updateReportsTab() {
+        if (!lastProcessedData.movements_df || lastProcessedData.movements_df.length === 0) {
+            elements.reportsEmptyState.style.display = 'block';
+            elements.btnReportPdf.disabled = true;
+            elements.btnReportExcel.disabled = true;
+            return;
+        }
+
+        elements.reportsEmptyState.style.display = 'none';
+        elements.btnReportPdf.disabled = false;
+        elements.btnReportExcel.disabled = false;
+
+        // Calculate statistics
+        const movements = lastProcessedData.movements_df;
+        const ingresos = movements.filter(m => m.Tipo === 'INGRESO');
+        const retiros = movements.filter(m => m.Tipo === 'RETIRO');
+
+        const totalIngresos = ingresos.reduce((sum, m) => sum + (parseFloat(m.Valor) || 0), 0);
+        const totalRetiros = retiros.reduce((sum, m) => sum + (parseFloat(m.Valor) || 0), 0);
+        const neto = totalIngresos - totalRetiros;
+
+        // Update stat cards
+        document.getElementById('report-total-ingresos').textContent = `$${totalIngresos.toFixed(2)}`;
+        document.getElementById('report-count-ingresos').textContent = `${ingresos.length} registros`;
+
+        document.getElementById('report-total-retiros').textContent = `$${totalRetiros.toFixed(2)}`;
+        document.getElementById('report-count-retiros').textContent = `${retiros.length} registros`;
+
+        document.getElementById('report-balance-neto').textContent = `$${neto.toFixed(2)}`;
+        const netoStatus = neto > 0 ? '✓ Positivo' : neto < 0 ? '✗ Negativo' : 'Neutral';
+        document.getElementById('report-balance-status').textContent = netoStatus;
+
+        const total = totalIngresos + totalRetiros;
+        const porcentajeIngresos = total > 0 ? ((totalIngresos / total) * 100).toFixed(1) : 0;
+        document.getElementById('report-porcentaje').textContent = `${porcentajeIngresos}%`;
+        document.getElementById('report-proporcion').textContent = 'Ingresos vs Retiros';
+
+        // Create chart
+        createReportChart(totalIngresos, totalRetiros);
+
+        lastReportData = { totalIngresos, totalRetiros, neto, movements };
+    }
+
+    function createReportChart(ingresos, retiros) {
+        const ctx = document.getElementById('chartIngresoRetiro');
+        if (!ctx) return;
+
+        // Destroy previous chart if exists
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Ingresos', 'Retiros'],
+                datasets: [{
+                    label: 'Montos ($)',
+                    data: [ingresos, retiros],
+                    backgroundColor: [
+                        'rgba(16, 185, 129, 0.8)',
+                        'rgba(239, 68, 68, 0.8)'
+                    ],
+                    borderColor: [
+                        'rgba(16, 185, 129, 1)',
+                        'rgba(239, 68, 68, 1)'
+                    ],
+                    borderWidth: 2,
+                    borderRadius: 8,
+                    hoverBackgroundColor: [
+                        'rgba(16, 185, 129, 1)',
+                        'rgba(239, 68, 68, 1)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#f8fafc',
+                            font: { size: 14, weight: 'bold' }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            color: '#cbd5e1',
+                            callback: function(value) {
+                                return '$' + value.toFixed(0);
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(124, 58, 237, 0.1)'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: '#cbd5e1'
+                        },
+                        grid: {
+                            color: 'rgba(124, 58, 237, 0.1)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Report download handlers
+    if (elements.btnReportPdf) {
+        elements.btnReportPdf.addEventListener('click', generatePdfReport);
+    }
+    if (elements.btnReportExcel) {
+        elements.btnReportExcel.addEventListener('click', generateExcelReport);
+    }
+
+    // Update reports when processing completes
+    const originalShowSuccess = showSuccessState;
+    showSuccessState = function() {
+        originalShowSuccess.call(this);
+        updateReportsTab();
+    };
 });

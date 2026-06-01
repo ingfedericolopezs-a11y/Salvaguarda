@@ -44,6 +44,10 @@
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 <span>Historial de Archivos</span>
             </button>
+            <button class="tab-btn" data-tab="reports-tab">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                <span>Reportes</span>
+            </button>
         </nav>
 
         <!-- Content Area -->
@@ -257,6 +261,76 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Reports Tab -->
+            <section id="reports-tab" class="tab-content animate-fade-in">
+                <div class="card glass-card reports-main-card">
+                    <h2 class="card-title">📊 Reportes y Estadísticas</h2>
+                    <p class="card-subtitle">Visualiza estadísticas de ingresos vs retiros y descarga reportes detallados.</p>
+
+                    <!-- Statistics Grid -->
+                    <div class="stats-grid">
+                        <div class="stat-card stat-card-ingresos">
+                            <div class="stat-icon">📈</div>
+                            <div class="stat-content">
+                                <div class="stat-label">Total Ingresos</div>
+                                <div class="stat-value" id="report-total-ingresos">$0</div>
+                                <div class="stat-subtext" id="report-count-ingresos">0 registros</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card stat-card-retiros">
+                            <div class="stat-icon">📉</div>
+                            <div class="stat-content">
+                                <div class="stat-label">Total Retiros</div>
+                                <div class="stat-value" id="report-total-retiros">$0</div>
+                                <div class="stat-subtext" id="report-count-retiros">0 registros</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card stat-card-neto">
+                            <div class="stat-icon">💰</div>
+                            <div class="stat-content">
+                                <div class="stat-label">Balance Neto</div>
+                                <div class="stat-value" id="report-balance-neto">$0</div>
+                                <div class="stat-subtext" id="report-balance-status">Neutral</div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card stat-card-porcentaje">
+                            <div class="stat-icon">📊</div>
+                            <div class="stat-content">
+                                <div class="stat-label">Proporción</div>
+                                <div class="stat-value" id="report-porcentaje">0%</div>
+                                <div class="stat-subtext" id="report-proporcion">Ingresos vs Retiros</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart Area -->
+                    <div class="chart-container">
+                        <canvas id="chartIngresoRetiro"></canvas>
+                    </div>
+
+                    <!-- Reports Actions -->
+                    <div class="reports-actions">
+                        <button class="btn btn-primary" id="btn-report-pdf" disabled>
+                            <span class="btn-text">📄 Descargar PDF</span>
+                            <span class="spinner hidden"></span>
+                        </button>
+                        <button class="btn btn-accent" id="btn-report-excel" disabled>
+                            <span class="btn-text">📊 Descargar Excel</span>
+                            <span class="spinner hidden"></span>
+                        </button>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div class="reports-empty-state" id="reports-empty-state">
+                        <div class="empty-icon">📋</div>
+                        <p>Procesa archivos primero para ver estadísticas</p>
+                    </div>
+                </div>
+            </section>
         </main>
         
         <!-- Footer -->
@@ -265,6 +339,7 @@
             <p>Versión 1.0 (Automated Quoting System & Conciliación)</p>
         </footer>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

@@ -23,6 +23,7 @@ from utils import (
 )
 from utils.file_handler import create_run_directory, ensure_directories
 from utils.report_generator import ReportGenerator
+from utils.history_manager import HistoryManager
 
 
 # Configure logging
@@ -43,8 +44,10 @@ app.config['MAX_CONTENT_LENGTH'] = config.MAX_FILE_SIZE
 # Ensure directories exist
 ensure_directories(config.UPLOAD_DIR, config.OUTPUT_DIR)
 
-# Initialize report generator
+# Initialize report generator and history manager
 report_generator = ReportGenerator(config.OUTPUT_DIR)
+history_dir = os.path.join(config.OUTPUT_DIR, 'historical_records')
+history_manager = HistoryManager(history_dir)
 
 # Global storage for last processed data (for report generation)
 last_processed_data: Dict[str, Any] = {
@@ -214,6 +217,10 @@ def process_files() -> Tuple[str, int]:
         last_processed_data['master_df'] = master_df
         last_processed_data['analytics'] = analytics
 
+        # Save to history for reconciliation
+        record_id = history_manager.save_processing(movements_df, master_df, analytics)
+        logger.info(f"Processing saved to history with ID: {record_id}")
+
         logger.info("Processing completed successfully")
 
         return jsonify({
@@ -341,6 +348,63 @@ def search_cedula() -> Tuple[str, int]:
     except Exception as e:
         logger.error(f"Unexpected error during search: {e}", exc_info=True)
         return jsonify([]), 500
+
+
+@app.route('/api/history/list', methods=['GET'])
+def get_history_list() -> Tuple[str, int]:
+    """
+    Get list of all historical processing records
+
+    Returns:
+        Tuple[str, int]: JSON list of records and HTTP status code
+    """
+    try:
+        records = history_manager.get_history_list()
+        logger.info(f"Retrieved {len(records)} historical records")
+        return jsonify(records), 200
+    except Exception as e:
+        logger.error(f"Error retrieving history list: {e}", exc_info=True)
+        return jsonify({'error': 'Error retrieving history'}), 500
+
+
+@app.route('/api/history/compare', methods=['POST'])
+def compare_history() -> Tuple[str, int]:
+    """
+    Compare old historical record with current movements
+
+    Expected JSON:
+        - record_id: ID of historical record to compare with
+
+    Returns:
+        Tuple[str, int]: Comparison results and HTTP status code
+    """
+    try:
+        data = request.get_json()
+        record_id = data.get('record_id')
+
+        if not record_id:
+            return jsonify({'error': 'record_id required'}), 400
+
+        if not last_processed_data['movements_df'] is not None:
+            return jsonify({'error': 'No current data to compare. Process files first.'}), 400
+
+        comparison = history_manager.compare_records(
+            record_id,
+            last_processed_data['movements_df']
+        )
+
+        if 'error' in comparison:
+            return jsonify(comparison), 404
+
+        logger.info(f"Comparison completed: Added={comparison['summary']['added_count']}, "
+                   f"Removed={comparison['summary']['removed_count']}, "
+                   f"Modified={comparison['summary']['modified_count']}")
+
+        return jsonify(comparison), 200
+
+    except Exception as e:
+        logger.error(f"Error comparing history: {e}", exc_info=True)
+        return jsonify({'error': 'Error comparing records'}), 500
 
 
 @app.route('/api/reports/pdf', methods=['POST'])

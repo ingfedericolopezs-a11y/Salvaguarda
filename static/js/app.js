@@ -950,4 +950,126 @@ document.addEventListener('DOMContentLoaded', () => {
         originalShowSuccess.call(this);
         updateReportsTab();
     };
+
+    // History/Comparison functionality
+    async function loadProcessingHistory() {
+        try {
+            const response = await fetch('/api/history/list');
+            const history = await response.json();
+
+            const tbody = document.getElementById('processing-history-body');
+            tbody.innerHTML = '';
+
+            if (!history || history.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Sin histórico de procesaminetos</td></tr>';
+                return;
+            }
+
+            history.reverse(); // Show newest first
+
+            history.forEach(record => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${record.date_formatted}</td>
+                    <td>${record.movements_count}</td>
+                    <td>${record.master_count}</td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick="compareWithHistory('${record.id}')">
+                            Cruzar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        } catch (error) {
+            console.error('Error loading history:', error);
+            document.getElementById('processing-history-body').innerHTML =
+                '<tr><td colspan="4" style="text-align: center; color: red;">Error cargando histórico</td></tr>';
+        }
+    }
+
+    window.compareWithHistory = async function(recordId) {
+        if (!lastProcessedData.movements_df || lastProcessedData.movements_df.length === 0) {
+            showNotification('⚠️ Procesa archivos primero para hacer un cruce', 'warning');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/history/compare', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ record_id: recordId })
+            });
+
+            const comparison = await response.json();
+
+            if (!response.ok) {
+                showNotification('❌ Error en el cruce: ' + (comparison.error || 'Unknown error'), 'error');
+                return;
+            }
+
+            displayComparisonResults(comparison);
+            showNotification('✅ Cruce completado', 'success');
+
+        } catch (error) {
+            console.error('Comparison error:', error);
+            showNotification('❌ Error al hacer el cruce', 'error');
+        }
+    };
+
+    function displayComparisonResults(comparison) {
+        const resultsDiv = document.getElementById('comparison-results');
+
+        // Update summary stats
+        document.getElementById('comp-added').textContent = comparison.summary.added_count;
+        document.getElementById('comp-removed').textContent = comparison.summary.removed_count;
+        document.getElementById('comp-modified').textContent = comparison.summary.modified_count;
+        document.getElementById('comp-unchanged').textContent = comparison.summary.unchanged_count;
+
+        // Update added list
+        const addedDiv = document.getElementById('added-list');
+        if (comparison.added.length === 0) {
+            addedDiv.innerHTML = '<p>Ninguna cédula agregada</p>';
+        } else {
+            addedDiv.innerHTML = comparison.added
+                .map(id => `<div class="detail-item">${id}</div>`)
+                .join('');
+        }
+
+        // Update removed list
+        const removedDiv = document.getElementById('removed-list');
+        if (comparison.removed.length === 0) {
+            removedDiv.innerHTML = '<p>Ninguna cédula removida</p>';
+        } else {
+            removedDiv.innerHTML = comparison.removed
+                .map(id => `<div class="detail-item">${id}</div>`)
+                .join('');
+        }
+
+        // Update modified list
+        const modifiedDiv = document.getElementById('modified-list');
+        if (comparison.modified.length === 0) {
+            modifiedDiv.innerHTML = '<p>Ninguna cédula modificada</p>';
+        } else {
+            modifiedDiv.innerHTML = comparison.modified
+                .map(m => `<div class="detail-item">${m.id}</div>`)
+                .join('');
+        }
+
+        // Show results
+        resultsDiv.classList.remove('hidden');
+
+        // Scroll to results
+        resultsDiv.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Load history when page loads
+    loadProcessingHistory();
+
+    // Reload history when processing completes
+    const originalShowSuccess2 = showSuccessState;
+    showSuccessState = function() {
+        originalShowSuccess2.call(this);
+        loadProcessingHistory();
+    };
 });

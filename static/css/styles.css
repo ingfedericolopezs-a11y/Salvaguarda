@@ -1576,6 +1576,114 @@ tbody tr:hover {
     margin-bottom: var(--spacing-lg);
 }
 
+/* Comparison/History Styles */
+.history-processing-wrapper {
+    margin-bottom: var(--spacing-xl);
+}
+
+.comparison-results {
+    margin-top: var(--spacing-xl);
+    padding: var(--spacing-lg);
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, rgba(6, 182, 212, 0.05) 100%);
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+.comparison-results h3 {
+    margin-bottom: var(--spacing-lg);
+    color: var(--text-primary);
+}
+
+.comparison-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-xl);
+}
+
+.comp-stat {
+    padding: var(--spacing-md);
+    background: rgba(5, 8, 18, 0.5);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(124, 58, 237, 0.2);
+    text-align: center;
+}
+
+.comp-stat-added {
+    border-left: 4px solid #10b981;
+}
+
+.comp-stat-removed {
+    border-left: 4px solid #ef4444;
+}
+
+.comp-stat-modified {
+    border-left: 4px solid #f59e0b;
+}
+
+.comp-stat-unchanged {
+    border-left: 4px solid #0ea5e9;
+}
+
+.comp-icon {
+    font-size: 1.5rem;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.comp-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+
+.comp-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: var(--font-weight-extrabold);
+    color: var(--text-primary);
+}
+
+.comparison-details {
+    margin-top: var(--spacing-xl);
+}
+
+.detail-section {
+    margin-bottom: var(--spacing-xl);
+}
+
+.detail-section h4 {
+    margin-bottom: var(--spacing-md);
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.detail-list {
+    background: rgba(5, 8, 18, 0.5);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.detail-list p {
+    color: var(--text-muted);
+    margin: 0;
+    padding: var(--spacing-sm);
+}
+
+.detail-item {
+    padding: var(--spacing-sm);
+    background: rgba(124, 58, 237, 0.1);
+    border-left: 3px solid #7c3aed;
+    margin-bottom: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+}
+
 /* Print Styles */
 @media print {
     body {

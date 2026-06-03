@@ -237,10 +237,88 @@
 
             <!-- History/Files Tab -->
             <section id="history-tab" class="tab-content animate-fade-in">
+                <!-- Historical Processing Records -->
                 <div class="card glass-card history-card">
-                    <h2 class="card-title">Historial de Archivos en Carpeta</h2>
-                    <p class="card-subtitle">Administra, visualiza y descarga los archivos Excel de tu espacio de trabajo local.</p>
-                    
+                    <h2 class="card-title">📚 Histórico de Procesamientos</h2>
+                    <p class="card-subtitle">Carga procesaminetos anteriores para hacer un cruce con los datos actuales.</p>
+
+                    <div class="history-processing-wrapper">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Movimientos</th>
+                                    <th>Registros Maestro</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="processing-history-body">
+                                <tr>
+                                    <td colspan="4" style="text-align: center;">Cargando histórico...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Comparison Results (hidden until comparison is made) -->
+                    <div class="comparison-results hidden" id="comparison-results">
+                        <h3>Resultados del Cruce</h3>
+                        <div class="comparison-summary">
+                            <div class="comp-stat comp-stat-added">
+                                <span class="comp-icon">➕</span>
+                                <span class="comp-label">Agregados</span>
+                                <span class="comp-value" id="comp-added">0</span>
+                            </div>
+                            <div class="comp-stat comp-stat-removed">
+                                <span class="comp-icon">➖</span>
+                                <span class="comp-label">Removidos</span>
+                                <span class="comp-value" id="comp-removed">0</span>
+                            </div>
+                            <div class="comp-stat comp-stat-modified">
+                                <span class="comp-icon">✏️</span>
+                                <span class="comp-label">Modificados</span>
+                                <span class="comp-value" id="comp-modified">0</span>
+                            </div>
+                            <div class="comp-stat comp-stat-unchanged">
+                                <span class="comp-icon">✓</span>
+                                <span class="comp-label">Sin Cambios</span>
+                                <span class="comp-value" id="comp-unchanged">0</span>
+                            </div>
+                        </div>
+
+                        <div class="comparison-details">
+                            <!-- Added Records -->
+                            <div class="detail-section">
+                                <h4>Cédulas Agregadas Este Mes</h4>
+                                <div class="detail-list" id="added-list">
+                                    <p>Ninguna</p>
+                                </div>
+                            </div>
+
+                            <!-- Removed Records -->
+                            <div class="detail-section">
+                                <h4>Cédulas Removidas Este Mes</h4>
+                                <div class="detail-list" id="removed-list">
+                                    <p>Ninguna</p>
+                                </div>
+                            </div>
+
+                            <!-- Modified Records -->
+                            <div class="detail-section">
+                                <h4>Cédulas Modificadas Este Mes</h4>
+                                <div class="detail-list" id="modified-list">
+                                    <p>Ninguna</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Files in Folder -->
+                <div class="card glass-card history-card">
+                    <h2 class="card-title">📁 Archivos en Carpeta</h2>
+                    <p class="card-subtitle">Archivos Excel disponibles en tu espacio de trabajo local.</p>
+
                     <div class="history-list-wrapper">
                         <table class="history-table">
                             <thead>

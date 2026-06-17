@@ -50,6 +50,17 @@ class HistoryManager:
         movements_data = movements_df.to_dict('records') if movements_df is not None else []
         master_data = master_df.to_dict('records') if master_df is not None else []
 
+        # Convert Timestamp objects to strings for JSON serialization
+        for record in movements_data:
+            for key, value in record.items():
+                if pd.notna(value) and hasattr(value, 'isoformat'):
+                    record[key] = str(value)
+
+        for record in master_data:
+            for key, value in record.items():
+                if pd.notna(value) and hasattr(value, 'isoformat'):
+                    record[key] = str(value)
+
         record = {
             'id': record_id,
             'timestamp': datetime.now().isoformat(),

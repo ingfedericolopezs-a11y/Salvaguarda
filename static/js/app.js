@@ -93,6 +93,13 @@ document.addEventListener('DOMContentLoaded', () => {
         searchResults: []
     };
 
+    // Global lastProcessedData for reports and comparison
+    window.lastProcessedData = {
+        movements_df: [],
+        master_df: [],
+        analytics: null
+    };
+
     // Lazy load DOM elements (only when needed)
     const getElement = (() => {
         const cache = {};
@@ -134,6 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
         get btnShowMovements() { return getElement('btn-show-movements'); },
         get btnShowMaster() { return getElement('btn-show-master'); },
         get previewSearch() { return getElement('preview-search'); },
+        get previewFilterType() { return getElement('preview-filter-type'); },
         get tableHeaders() { return getElement('table-headers'); },
         get tableBody() { return getElement('table-body'); },
         get previewCounter() { return getElement('preview-counter'); },
@@ -308,9 +316,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (validFiles.length > 0) {
-            state.movementFiles = validFiles;
-            updateMovementsList();
-            validateInputs();
+            // Add new files to existing list, avoiding duplicates by filename
+            const existingNames = new Set(state.movementFiles.map(f => f.name));
+            const newFiles = validFiles.filter(f => !existingNames.has(f.name));
+
+            if (newFiles.length > 0) {
+                state.movementFiles = [...state.movementFiles, ...newFiles];
+                updateMovementsList();
+                validateInputs();
+            } else {
+                showNotification('⚠️ Los archivos seleccionados ya están en la lista', 'warning');
+            }
         }
     });
 
@@ -353,15 +369,75 @@ document.addEventListener('DOMContentLoaded', () => {
     // FORM SUBMISSION & PROCESSING
     // ========================================================================
 
+    // ── Cobro modal logic ────────────────────────────────────────────────────
+    const cobroModal   = document.getElementById('cobro-modal');
+    const cobroMesEl   = document.getElementById('cobro-mes');
+    const cobroAnioEl  = document.getElementById('cobro-anio');
+    const cobroPreview = document.getElementById('cobro-preview');
+    const cobroCancelBtn  = document.getElementById('cobro-cancel');
+    const cobroConfirmBtn = document.getElementById('cobro-confirm');
+
+    const _MESES = ['', 'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    function _updateCobroPreview() {
+        const mes  = parseInt(cobroMesEl.value);
+        const anio = parseInt(cobroAnioEl.value);
+        if (!mes || !anio) return;
+        const prevMes  = mes === 1 ? 12 : mes - 1;
+        const prevAnio = mes === 1 ? anio - 1 : anio;
+        const mm = String(prevMes).padStart(2, '0');
+        cobroPreview.textContent = `Fecha de cobro: 26/${mm}/${prevAnio}`;
+    }
+
+    // Set defaults: current month & year
+    (function initCobroDefaults() {
+        const now = new Date();
+        cobroMesEl.value  = now.getMonth() + 1;
+        cobroAnioEl.value = now.getFullYear();
+        _updateCobroPreview();
+    })();
+
+    cobroMesEl.addEventListener('change',  _updateCobroPreview);
+    cobroAnioEl.addEventListener('input',  _updateCobroPreview);
+    cobroCancelBtn.addEventListener('click', () => {
+        cobroModal.style.display = 'none';
+        state.isProcessing = false;
+    });
+
+    function _showCobroModal() {
+        cobroModal.style.display = 'flex';
+        _updateCobroPreview();
+    }
+
+    // Resolves with {mes, anio} when confirmed, null when cancelled
+    function _waitCobroConfirm() {
+        return new Promise((resolve) => {
+            function onConfirm() { cleanup(); resolve({ mes: cobroMesEl.value, anio: cobroAnioEl.value }); }
+            function onCancel()  { cleanup(); resolve(null); }
+            function cleanup()   { cobroConfirmBtn.removeEventListener('click', onConfirm); cobroCancelBtn.removeEventListener('click', onCancel); cobroModal.style.display = 'none'; }
+            cobroConfirmBtn.addEventListener('click', onConfirm);
+            cobroCancelBtn.addEventListener('click',  onCancel);
+        });
+    }
+    // ── End cobro modal logic ─────────────────────────────────────────────────
+
     elements.uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
-        if (state.isProcessing) return; // Prevent double submission
+        if (state.isProcessing) return;
         state.isProcessing = true;
+
+        // Show cobro modal before processing
+        _showCobroModal();
+        const cobro = await _waitCobroConfirm();
+        if (!cobro) { state.isProcessing = false; return; }
 
         const formData = new FormData();
         formData.append('master_file', state.masterFile);
         state.movementFiles.forEach(f => formData.append('movement_files', f));
+        formData.append('cobro_mes',  cobro.mes);
+        formData.append('cobro_anio', cobro.anio);
 
         showState('loading');
         elements.previewSection.classList.add('hidden');
@@ -388,9 +464,28 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.dlMovements.href = `/api/download/${result.filenames.movements}`;
             elements.dlMaster.href = `/api/download/${result.filenames.master}`;
 
+            // Persist download links to localStorage for recovery after page reload
+            localStorage.setItem('lastProcessedFiles', JSON.stringify({
+                timestamp: new Date().toISOString(),
+                movements: result.filenames.movements,
+                master: result.filenames.master
+            }));
+
             // Store preview data
             state.previewData.movements = result.preview_movements || [];
             state.previewData.master = result.preview_master || [];
+
+            // Update global lastProcessedData for reports and comparison
+            window.lastProcessedData.movements_df = result.preview_movements || [];
+            window.lastProcessedData.master_df = result.preview_master || [];
+
+            // Update reports and history displays
+            if (typeof updateReportsTab === 'function') {
+                updateReportsTab();
+            }
+            if (typeof loadProcessingHistory === 'function') {
+                loadProcessingHistory();
+            }
 
             showState('success');
             showPreview('movements');
@@ -454,15 +549,33 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.previewSearch.value = '';
     }
 
-    /**
-     * Render preview table with pagination
-     * Only shows first 50 rows for performance
-     */
-    function renderPreviewTable(data) {
-        const maxRows = 50;
-        const displayData = data.slice(0, maxRows);
+    const PAGE_SIZE = 100;
+    let currentPage = 1;
+    let currentFilteredData = [];
 
-        elements.tableBody.innerHTML = displayData
+    function renderPreviewTable(data) {
+        currentFilteredData = data;
+        currentPage = 1;
+        renderPage();
+    }
+
+    function renderPage() {
+        const data = currentFilteredData;
+        const totalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        if (data.length === 0) {
+            elements.tableBody.innerHTML = '<tr><td colspan="100" style="text-align:center; padding:2rem; color:#999;">No se encontraron registros con los filtros aplicados</td></tr>';
+            elements.previewCounter.textContent = '⚠️ Sin resultados';
+            _renderPagination(0, 1, 1);
+            return;
+        }
+
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const end = Math.min(start + PAGE_SIZE, data.length);
+        const pageData = data.slice(start, end);
+
+        elements.tableBody.innerHTML = pageData
             .map(row => `
                 <tr>
                     ${currentPreviewColumns
@@ -472,36 +585,130 @@ document.addEventListener('DOMContentLoaded', () => {
             `)
             .join('');
 
-        const countText = data.length > maxRows
-            ? `Mostrando primeras ${maxRows} de ${data.length}`
-            : `Mostrando ${data.length}`;
-        elements.previewCounter.textContent = `${countText} registros`;
+        const filterInfo = elements.previewSearch?.value || elements.previewFilterType?.value ? ' (filtrados)' : '';
+        elements.previewCounter.textContent = `Mostrando ${start + 1}–${end} de ${data.length} registros${filterInfo}`;
+        _renderPagination(data.length, currentPage, totalPages);
     }
 
+    function _renderPagination(total, page, totalPages) {
+        let pg = document.getElementById('preview-pagination');
+        if (!pg) {
+            pg = document.createElement('div');
+            pg.id = 'preview-pagination';
+            pg.style.cssText = 'display:flex;align-items:center;gap:0.75rem;justify-content:center;margin-top:1rem;flex-wrap:wrap;';
+            const footer = elements.previewCounter?.parentElement;
+            if (footer) footer.insertAdjacentElement('afterend', pg);
+        }
+        if (total === 0 || totalPages <= 1) { pg.innerHTML = ''; return; }
+
+        const btnStyle = 'padding:0.4rem 0.9rem;border:1px solid #444;border-radius:6px;background:#1e1e2e;color:#cdd6f4;cursor:pointer;font-size:0.85rem;';
+        const activeBtnStyle = 'padding:0.4rem 0.9rem;border:1px solid #89b4fa;border-radius:6px;background:#313244;color:#89b4fa;cursor:pointer;font-size:0.85rem;font-weight:600;';
+
+        let pageButtons = '';
+        // Show first, last, and pages around current
+        const delta = 2;
+        const range = [];
+        for (let i = Math.max(1, page - delta); i <= Math.min(totalPages, page + delta); i++) range.push(i);
+        if (range[0] > 1) { pageButtons += `<button style="${btnStyle}" onclick="window._previewGoTo(1)">1</button>`; if (range[0] > 2) pageButtons += `<span style="color:#6c7086">…</span>`; }
+        range.forEach(p => { pageButtons += `<button style="${p === page ? activeBtnStyle : btnStyle}" onclick="window._previewGoTo(${p})">${p}</button>`; });
+        if (range[range.length-1] < totalPages) { if (range[range.length-1] < totalPages - 1) pageButtons += `<span style="color:#6c7086">…</span>`; pageButtons += `<button style="${btnStyle}" onclick="window._previewGoTo(${totalPages})">${totalPages}</button>`; }
+
+        pg.innerHTML = `
+            <button style="${btnStyle}" onclick="window._previewGoTo(${page-1})" ${page<=1?'disabled':''}>◀ Anterior</button>
+            ${pageButtons}
+            <button style="${btnStyle}" onclick="window._previewGoTo(${page+1})" ${page>=totalPages?'disabled':''}>Siguiente ▶</button>
+            <span style="color:#6c7086;font-size:0.8rem;">Página ${page} de ${totalPages}</span>
+        `;
+    }
+
+    window._previewGoTo = function(page) {
+        const totalPages = Math.ceil(currentFilteredData.length / PAGE_SIZE);
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        renderPage();
+        elements.previewSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
     /**
-     * Debounced search in preview table
-     * Prevents excessive DOM updates
+     * Apply both search and filter to preview table
+     * Filters by text search and movement type
      */
-    const debouncedPreviewSearch = debounce((query) => {
-        if (!query) {
-            renderPreviewTable(currentPreviewData);
-            return;
+    function applyPreviewFilters() {
+        const searchQuery = elements.previewSearch?.value || '';
+        const filterType = elements.previewFilterType?.value || '';
+
+        let filtered = currentPreviewData;
+
+        // Apply type filter
+        if (filterType) {
+            filtered = filtered.filter(row => {
+                const tipoNovedad = String(row['TIPO_NOVEDAD'] || '').toUpperCase();
+                return tipoNovedad.includes(filterType);
+            });
         }
 
-        const filtered = currentPreviewData.filter(row =>
-            currentPreviewColumns.some(col =>
-                String(row[col] || '').toLowerCase().includes(query.toLowerCase())
-            )
-        );
-        renderPreviewTable(filtered);
-    }, 300);
+        // Apply search filter
+        if (searchQuery) {
+            filtered = filtered.filter(row =>
+                currentPreviewColumns.some(col =>
+                    String(row[col] || '').toLowerCase().includes(searchQuery.toLowerCase())
+                )
+            );
+        }
 
-    elements.previewSearch?.addEventListener('input', (e) => {
-        debouncedPreviewSearch(e.target.value);
-    });
+        renderPreviewTable(filtered);
+    }
+
+    const debouncedPreviewSearch = debounce(applyPreviewFilters, 300);
+
+    elements.previewSearch?.addEventListener('input', debouncedPreviewSearch);
+    elements.previewFilterType?.addEventListener('change', applyPreviewFilters);
 
     elements.btnShowMovements?.addEventListener('click', () => showPreview('movements'));
     elements.btnShowMaster?.addEventListener('click', () => showPreview('master'));
+
+    /**
+     * Download all preview data as Excel file
+     */
+    const downloadPreviewButton = getElement('btn-download-preview');
+    if (downloadPreviewButton) {
+        downloadPreviewButton.addEventListener('click', () => {
+            if (!currentPreviewData || currentPreviewData.length === 0) {
+                showNotification('No hay datos para descargar', 'info');
+                return;
+            }
+
+            // Convert data to CSV format
+            const headers = currentPreviewColumns;
+            const csvContent = [
+                headers.join(','),
+                ...currentPreviewData.map(row =>
+                    headers.map(col => {
+                        const value = row[col];
+                        if (value === null || value === undefined) return '';
+                        // Escape commas and quotes in values
+                        const str = String(value);
+                        return str.includes(',') || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+                    }).join(',')
+                )
+            ].join('\n');
+
+            // Create blob and download
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            const filename = state.currentPreviewTab === 'movements'
+                ? 'Movimientos_Completos.csv'
+                : 'Plantilla_Completa.csv';
+
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+
+            showNotification(`✅ Descargando ${currentPreviewData.length} registros completos`, 'success');
+        });
+    }
 
     // ========================================================================
     // SEARCH FUNCTIONALITY
@@ -689,6 +896,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     validateInputs();
     showState('processing');
+
+    /**
+     * Restore download links from localStorage if they exist
+     * Allows users to download files even after page reload
+     */
+    function restoreDownloadLinks() {
+        const savedData = localStorage.getItem('lastProcessedFiles');
+        if (savedData) {
+            try {
+                const { timestamp, movements, master } = JSON.parse(savedData);
+                const savedTime = new Date(timestamp);
+                const now = new Date();
+                const hoursAgo = (now - savedTime) / (1000 * 60 * 60);
+
+                // Only restore if files were processed in the last 24 hours
+                if (hoursAgo < 24) {
+                    elements.dlMovements.href = `/api/download/${movements}`;
+                    elements.dlMaster.href = `/api/download/${master}`;
+
+                    // Show success state with restored downloads
+                    showState('success');
+
+                    // Show a notification that downloads are restored
+                    const savedDate = savedTime.toLocaleString('es-ES');
+                    showNotification(`📥 Archivos disponibles para descargar (procesados: ${savedDate})`, 'info');
+                }
+            } catch (error) {
+                console.warn('Error restoring downloads from localStorage:', error);
+            }
+        }
+    }
+
+    // Restore previous downloads if they exist
+    restoreDownloadLinks();
 
     // Performance monitoring (optional)
     if ('performance' in window) {
@@ -944,13 +1185,6 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.btnReportExcel.addEventListener('click', generateExcelReport);
     }
 
-    // Update reports when processing completes
-    const originalShowSuccess = showSuccessState;
-    showSuccessState = function() {
-        originalShowSuccess.call(this);
-        updateReportsTab();
-    };
-
     // History/Comparison functionality
     async function loadProcessingHistory() {
         try {
@@ -1065,11 +1299,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load history when page loads
     loadProcessingHistory();
-
-    // Reload history when processing completes
-    const originalShowSuccess2 = showSuccessState;
-    showSuccessState = function() {
-        originalShowSuccess2.call(this);
-        loadProcessingHistory();
-    };
 });

@@ -201,11 +201,17 @@ def process_files() -> Tuple[str, int]:
         if result['status'] != 'success':
             raise Exception(result.get('error', 'Unknown error'))
 
+        # Cobro date: 26 of the month prior to the selected billing month
+        cobro_mes  = int(request.form.get('cobro_mes',  0))
+        cobro_anio = int(request.form.get('cobro_anio', 0))
+
         # Generate output files
         output_files = generate_output_files(
             result['dataframes']['movements'],
             result['dataframes']['master'],
-            config.OUTPUT_DIR
+            config.OUTPUT_DIR,
+            cobro_mes=cobro_mes,
+            cobro_anio=cobro_anio
         )
 
         # Store data for report generation
@@ -385,7 +391,7 @@ def compare_history() -> Tuple[str, int]:
         if not record_id:
             return jsonify({'error': 'record_id required'}), 400
 
-        if not last_processed_data['movements_df'] is not None:
+        if last_processed_data['movements_df'] is None:
             return jsonify({'error': 'No current data to compare. Process files first.'}), 400
 
         comparison = history_manager.compare_records(

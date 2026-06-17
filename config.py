@@ -32,6 +32,8 @@ ALLOWED_MIMETYPES = {
 EXCEL_SHEET_NAMES = ['INGRESOS', 'RETIROS']
 HEADER_SEARCH_ROWS = 20  # Number of rows to search for headers
 NUMERO_POLIZA = 23156894  # Default policy number for all records
+CARGO_DEFAULT = 'AGENTES DE SEGURIDAD'  # Default cargo for INGRESOS
+TEMPLATE_PATH = os.path.join(BASE_DIR, 'data', 'plantilla_template.xlsx')
 
 # Logging Configuration
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

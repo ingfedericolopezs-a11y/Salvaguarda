@@ -6,11 +6,13 @@ the ROESAN-SALVAGUARDAR reconciliation application.
 """
 
 import os
+import shutil
 import pandas as pd
 import numpy as np
 from datetime import datetime
 import logging
 from typing import Dict, List, Any, Tuple, Optional, Set
+from openpyxl import load_workbook
 
 import config
 from .validators import clean_id, split_name
@@ -68,7 +70,7 @@ def process_excel_files(
         if cid:
             id_lookup[cid] = {
                 'CARGO': row.get('CARGO'),
-                'GENERO': row.get('GENERO'),
+                'GENERO': _normalize_genero(row.get('GENERO')),
                 'FECHA_NACIMIENTO_ASEGURADO': row.get('FECHA_NACIMIENTO_ASEGURADO'),
                 'VALOR_ASEGURADO_MUERTE': row.get('VALOR_ASEGURADO_MUERTE', 5000000)
             }
@@ -115,7 +117,23 @@ def process_excel_files(
                 id_col = _find_column(cols, ['IDENTIFICACION', 'C.C.', 'CEDULA', 'DOC'])
                 name_col = _find_column(cols, ['NOMBRE', 'RAZON SOCIAL', 'APELLIDO'])
                 fecha_nac_col = _find_column(cols, ['NACIMIENTO'])
-                fecha_nov_col = _find_column(cols, ['INGRESO', 'RETIRO', 'EGRESO', 'FECHA'])
+                # Look for movement date column - prioritize INGRESO/RETIRO which appear in "FECHA DE INGRESO/RETIRO"
+                fecha_nov_col = None
+                # First try to find "FECHA DE INGRESO" or "FECHA DE RETIRO"
+                for col in cols:
+                    col_upper = col.upper() if col else ''
+                    if 'INGRESO' in col_upper and 'FECHA' in col_upper:
+                        fecha_nov_col = col
+                        break
+                    if 'RETIRO' in col_upper and 'FECHA' in col_upper:
+                        fecha_nov_col = col
+                        break
+                # Fall back to looking for other keywords
+                if not fecha_nov_col:
+                    fecha_nov_col = _find_column(cols, ['NOVEDAD', 'INGRESO', 'RETIRO', 'EGRESO', 'MOVIMIENTO'])
+                # Last resort: any FECHA column
+                if not fecha_nov_col:
+                    fecha_nov_col = _find_column(cols, ['FECHA'])
 
                 if not id_col or not name_col:
                     logs.append(f"  [!] Error: Required columns not found in {fname} - {sheet_name}")
@@ -134,9 +152,10 @@ def process_excel_files(
 
                     # Get info from master lookup
                     lookup_data = id_lookup.get(n_id, {})
-                    cargo = lookup_data.get('CARGO')
-                    genero = lookup_data.get('GENERO')
+                    genero = _normalize_genero(lookup_data.get('GENERO'))
                     valor_aseg = lookup_data.get('VALOR_ASEGURADO_MUERTE', 5000000)
+                    # CARGO: always "AGENTES DE SEGURIDAD" for new ingreso records
+                    cargo = config.CARGO_DEFAULT if is_ingreso else lookup_data.get('CARGO')
 
                     # Birth date
                     fecha_nac = None
@@ -150,7 +169,7 @@ def process_excel_files(
                     fecha_novedad = row.get(fecha_nov_col) if fecha_nov_col else None
                     fecha_novedad = _format_date(fecha_novedad)
 
-                    tipo_novedad = 'INGRESO' if is_ingreso else 'RETIRO'
+                    tipo_novedad = 'Ingreso' if is_ingreso else 'Retiro'
 
                     if is_ingreso:
                         all_ingresos_ids.add(n_id)
@@ -179,6 +198,15 @@ def process_excel_files(
                 logger.error(f"Error processing {fname} - {sheet_name}: {e}")
 
     # 3. Generate output DataFrames
+    # For movements file - show FECHA_NOVEDAD (date of movement) NOT birth date
+    expected_cols_movements = [
+        'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
+        'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
+        'CARGO', 'GENERO', 'VALOR_ASEGURADO_MUERTE',
+        'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
+    ]
+
+    # For master file - include all columns
     expected_cols = [
         'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
         'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
@@ -186,6 +214,8 @@ def process_excel_files(
         'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
     ]
 
+    # Sort: Ingresos first, then Retiros
+    processed_rows.sort(key=lambda r: (0 if r['TIPO_NOVEDAD'] == 'Ingreso' else 1))
     result_df = pd.DataFrame(processed_rows, columns=expected_cols)
 
     # Update master with new ingresos and remove retiros
@@ -198,10 +228,12 @@ def process_excel_files(
                 row_dict['FECHA_NACIMIENTO_ASEGURADO'] = _format_date(row_dict['FECHA_NACIMIENTO_ASEGURADO'])
             new_master_rows.append(row_dict)
 
-    # Add new ingresos
+    # Add new ingresos to master with COBRO tipo_novedad for billing
     for row in processed_rows:
-        if row['TIPO_NOVEDAD'] == 'INGRESO':
-            new_master_rows.append(dict(row))
+        if row['TIPO_NOVEDAD'] == 'Ingreso':
+            master_row = dict(row)
+            master_row['TIPO_NOVEDAD'] = 'Cobro'
+            new_master_rows.append(master_row)
 
     new_master_df = pd.DataFrame(new_master_rows)
     for col in expected_cols:
@@ -211,9 +243,9 @@ def process_excel_files(
 
     logs.append("Processing completed successfully")
 
-    # Create preview data
-    preview_movs = result_df.head(50).replace({np.nan: None}).to_dict(orient='records')
-    preview_master = new_master_df.head(50).replace({np.nan: None}).to_dict(orient='records')
+    # Create preview data - all records, no limit
+    preview_movs = result_df.replace({np.nan: None}).to_dict(orient='records')
+    preview_master = new_master_df.replace({np.nan: None}).to_dict(orient='records')
 
     return {
         'status': 'success',
@@ -239,7 +271,9 @@ def process_excel_files(
 def generate_output_files(
     movements_df: pd.DataFrame,
     master_df: pd.DataFrame,
-    output_dir: str
+    output_dir: str,
+    cobro_mes: int = 0,
+    cobro_anio: int = 0
 ) -> Dict[str, Dict[str, str]]:
     """
     Write processed DataFrames to Excel files.
@@ -268,23 +302,44 @@ def generate_output_files(
         'master': f"PLANTILLA_CARGUE_COBRO_{current_month}.xlsx"
     }
 
-    expected_cols = [
+    # Columns for movements file (no birth date, only movement date)
+    cols_movements = [
+        'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
+        'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
+        'CARGO', 'GENERO', 'VALOR_ASEGURADO_MUERTE',
+        'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
+    ]
+
+    # Columns for master/cobro file (includes birth date)
+    cols_master = [
         'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
         'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
         'CARGO', 'GENERO', 'FECHA_NACIMIENTO_ASEGURADO', 'VALOR_ASEGURADO_MUERTE',
         'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
     ]
 
-    try:
-        # Write movements file
-        movements_path = os.path.join(output_dir, filenames['movements'])
-        with pd.ExcelWriter(movements_path, engine='openpyxl') as writer:
-            movements_df.to_excel(writer, index=False, sheet_name='GENERAL', columns=expected_cols)
+    # Calculate fecha_cobro: 26 of the month BEFORE cobro_mes
+    fecha_cobro = None
+    if cobro_mes and cobro_anio:
+        prev_mes  = 12 if cobro_mes == 1 else cobro_mes - 1
+        prev_anio = cobro_anio - 1 if cobro_mes == 1 else cobro_anio
+        fecha_cobro = f"26/{prev_mes:02d}/{prev_anio}"
 
-        # Write master file
+    # Apply fecha_cobro to master rows with TIPO_NOVEDAD == 'Cobro'
+    master_df_out = master_df.copy()
+    if fecha_cobro:
+        mask = master_df_out['TIPO_NOVEDAD'].astype(str).str.strip().str.lower() == 'cobro'
+        master_df_out.loc[mask, 'FECHA_NOVEDAD'] = fecha_cobro
+
+    try:
+        movements_path = os.path.join(output_dir, filenames['movements'])
         master_path = os.path.join(output_dir, filenames['master'])
-        with pd.ExcelWriter(master_path, engine='openpyxl') as writer:
-            master_df.to_excel(writer, index=False, sheet_name='Sheet1')
+
+        # Write movements file using PlantillaCargue template format
+        _write_with_template(movements_df, cols_movements, movements_path)
+
+        # Write master/cobro file using PlantillaCargue template format
+        _write_with_template(master_df_out, cols_master, master_path)
 
         logger.info(f"Output files generated: {filenames['movements']}, {filenames['master']}")
 
@@ -295,6 +350,43 @@ def generate_output_files(
     except Exception as e:
         logger.error(f"Error generating output files: {e}")
         raise
+
+
+def _write_with_template(df: pd.DataFrame, columns: List[str], output_path: str) -> None:
+    """
+    Write DataFrame to Sheet1 of a copy of PlantillaCargue template.
+    Preserves 'Descripcion Campos' sheet unchanged.
+    """
+    template = getattr(config, 'TEMPLATE_PATH', None)
+
+    if template and os.path.exists(template):
+        shutil.copy2(template, output_path)
+        wb = load_workbook(output_path)
+        # Remove Sheet1 and recreate it clean
+        if 'Sheet1' in wb.sheetnames:
+            del wb['Sheet1']
+        ws = wb.create_sheet('Sheet1')
+    else:
+        # Fallback: create file without template
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Sheet1'
+
+    # Write header row
+    write_cols = [c for c in columns if c in df.columns]
+    for col_idx, col_name in enumerate(write_cols, start=1):
+        ws.cell(row=1, column=col_idx, value=col_name)
+
+    # Write data rows
+    for row_idx, (_, row) in enumerate(df.iterrows(), start=2):
+        for col_idx, col_name in enumerate(write_cols, start=1):
+            val = row.get(col_name)
+            if pd.isna(val) if not isinstance(val, str) else False:
+                val = None
+            ws.cell(row=row_idx, column=col_idx, value=val)
+
+    wb.save(output_path)
 
 
 # Helper functions
@@ -367,23 +459,60 @@ def _find_column(columns: List[str], keywords: List[str]) -> Optional[str]:
     return None
 
 
+_MESES_NUM = {
+    'ENERO': '01', 'FEBRERO': '02', 'MARZO': '03', 'ABRIL': '04',
+    'MAYO': '05', 'JUNIO': '06', 'JULIO': '07', 'AGOSTO': '08',
+    'SEPTIEMBRE': '09', 'OCTUBRE': '10', 'NOVIEMBRE': '11', 'DICIEMBRE': '12'
+}
+
 def _format_date(date_val: Any) -> str:
-    """
-    Format date value to YYYY-MM-DD string.
-
-    Handles pandas Timestamp, datetime, and string date values,
-    converting them all to YYYY-MM-DD format.
-
-    Args:
-        date_val: Date value to format (Any type)
-
-    Returns:
-        str: Formatted date string in YYYY-MM-DD format, or empty string if None/NaN
-    """
-    if pd.isna(date_val):
-        return ""
+    """Format date value as DD/MM/YYYY."""
+    try:
+        if date_val is None or (not isinstance(date_val, (pd.Timestamp, datetime)) and pd.isna(date_val)):
+            return ""
+    except (TypeError, ValueError):
+        pass
 
     if isinstance(date_val, (pd.Timestamp, datetime)):
-        return date_val.strftime('%Y-%m-%d')
+        return date_val.strftime('%d/%m/%Y')
 
-    return str(date_val).strip() if date_val else ""
+    s = str(date_val).strip()
+    if not s or s.lower() in ('nan', 'nat', 'none'):
+        return ""
+
+    # Already DD/MM/YYYY
+    if len(s) == 10 and s[2] == '/' and s[5] == '/':
+        return s
+
+    # Convert YYYY-MM-DD → DD/MM/YYYY
+    if len(s) == 10 and s[4] == '-' and s[7] == '-':
+        parts = s.split('-')
+        return f"{parts[2]}/{parts[1]}/{parts[0]}"
+
+    # Convert Spanish text "01 DE DICIEMBRE DE 2025" → "01/12/2025"
+    parts = s.upper().split()
+    if len(parts) >= 4 and parts[1] == 'DE' and parts[3] == 'DE':
+        dia = parts[0].zfill(2)
+        mes = _MESES_NUM.get(parts[2])
+        anio = parts[4] if len(parts) >= 5 else parts[3]
+        if mes:
+            return f"{dia}/{mes}/{anio}"
+
+    return s
+
+
+def _normalize_genero(value: Any) -> Optional[str]:
+    """Normalize gender value to single letter 'M' or 'F' as required by PlantillaCargue."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    v = str(value).strip().upper()
+    if v in ('M', 'MASCULINO', 'MALE', 'HOMBRE', 'H'):
+        return 'M'
+    if v in ('F', 'FEMENINO', 'FEMALE', 'MUJER'):
+        return 'F'
+    return None

@@ -460,32 +460,27 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatWithAnimation(elements.statRetiros, result.statistics.total_retiros || '0');
             updateStatWithAnimation(elements.statMasterAfter, result.statistics.master_total_after || '0');
 
-            // Setup downloads
-            elements.dlMovements.href = `/api/download/${result.filenames.movements}`;
-            elements.dlMaster.href = `/api/download/${result.filenames.master}`;
-
-            // Persist download links to localStorage for recovery after page reload
-            localStorage.setItem('lastProcessedFiles', JSON.stringify({
-                timestamp: new Date().toISOString(),
-                movements: result.filenames.movements,
-                master: result.filenames.master
-            }));
-
             // Store preview data
             state.previewData.movements = result.preview_movements || [];
-            state.previewData.master = result.preview_master || [];
+            state.previewData.master    = result.preview_master    || [];
 
-            // Update global lastProcessedData for reports and comparison
-            window.lastProcessedData.movements_df = result.preview_movements || [];
-            window.lastProcessedData.master_df = result.preview_master || [];
+            // Show gender step if there are ingresos
+            const ingresos = result.ingresos_para_genero || [];
+            if (ingresos.length > 0) {
+                showState('processing');
+                const filenames = await _showGeneroModal(ingresos);
+                if (!filenames) { showState('processing'); return; }
+                _applyDownloadLinks(filenames);
+            } else {
+                // No ingresos — finalize immediately with empty gender updates
+                const filenames = await _callFinalize([]);
+                if (!filenames) throw new Error('Error al generar archivos');
+                _applyDownloadLinks(filenames);
+            }
 
             // Update reports and history displays
-            if (typeof updateReportsTab === 'function') {
-                updateReportsTab();
-            }
-            if (typeof loadProcessingHistory === 'function') {
-                loadProcessingHistory();
-            }
+            if (typeof updateReportsTab === 'function') updateReportsTab();
+            if (typeof loadProcessingHistory === 'function') loadProcessingHistory();
 
             showState('success');
             showPreview('movements');
@@ -499,6 +494,82 @@ document.addEventListener('DOMContentLoaded', () => {
             state.isProcessing = false;
         }
     });
+
+    function _applyDownloadLinks(filenames) {
+        elements.dlMovements.href = `/api/download/${filenames.movements}`;
+        elements.dlMaster.href    = `/api/download/${filenames.master}`;
+        localStorage.setItem('lastProcessedFiles', JSON.stringify({
+            timestamp: new Date().toISOString(),
+            movements: filenames.movements,
+            master:    filenames.master
+        }));
+    }
+
+    async function _callFinalize(gender_updates) {
+        const resp = await fetch('/api/finalize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gender_updates })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Error al generar archivos');
+        return data.filenames;
+    }
+
+    // ── Gender modal logic ────────────────────────────────────────────────────
+    const generoModal    = document.getElementById('genero-modal');
+    const generoTbody    = document.getElementById('genero-tbody');
+    const generoConfirm  = document.getElementById('genero-confirm');
+    const generoErrorMsg = document.getElementById('genero-error');
+
+    function _showGeneroModal(ingresos) {
+        // Build table rows
+        generoTbody.innerHTML = ingresos.map((p, i) => `
+            <tr style="border-bottom:1px solid #313244;">
+                <td style="padding:0.55rem 0.75rem; color:#cdd6f4;">${p.id}</td>
+                <td style="padding:0.55rem 0.75rem; color:#cdd6f4;">${p.apellidos}</td>
+                <td style="padding:0.55rem 0.75rem; color:#cdd6f4;">${p.nombres}</td>
+                <td style="padding:0.55rem 0.75rem; text-align:center;">
+                    <label style="margin-right:1rem; color:#a6e3a1; cursor:pointer;">
+                        <input type="radio" name="genero_${i}" value="M" data-id="${p.id}" ${p.genero==='M'?'checked':''}> M
+                    </label>
+                    <label style="color:#f5c2e7; cursor:pointer;">
+                        <input type="radio" name="genero_${i}" value="F" data-id="${p.id}" ${p.genero==='F'?'checked':''}> F
+                    </label>
+                </td>
+            </tr>
+        `).join('');
+
+        generoErrorMsg.style.display = 'none';
+        generoModal.style.display = 'flex';
+
+        return new Promise((resolve) => {
+            function onConfirm() {
+                // Validate all have a gender selected
+                const rows = generoTbody.querySelectorAll('tr');
+                const updates = [];
+                let allFilled = true;
+                rows.forEach((row, i) => {
+                    const checked = row.querySelector(`input[name="genero_${i}"]:checked`);
+                    const id = row.querySelector('input[type="radio"]')?.dataset.id;
+                    if (!checked) { allFilled = false; }
+                    else updates.push({ id, genero: checked.value });
+                });
+
+                if (!allFilled) {
+                    generoErrorMsg.textContent = '⚠️ Por favor selecciona el género de todas las personas.';
+                    generoErrorMsg.style.display = 'block';
+                    return;
+                }
+
+                generoConfirm.removeEventListener('click', onConfirm);
+                generoModal.style.display = 'none';
+                _callFinalize(updates).then(resolve).catch(() => resolve(null));
+            }
+            generoConfirm.addEventListener('click', onConfirm);
+        });
+    }
+    // ── End gender modal logic ────────────────────────────────────────────────
 
     /**
      * Animate number updates

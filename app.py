@@ -70,6 +70,58 @@ def index() -> str:
     return render_template('index.html')
 
 
+@app.route('/api/finalize', methods=['POST'])
+def finalize_files() -> Tuple[str, int]:
+    """
+    Apply gender updates to ingresos and generate output Excel files.
+    Called after the user confirms gender for each new ingreso.
+    """
+    if last_processed_data['movements_df'] is None:
+        return jsonify({'error': 'No hay datos procesados. Procesa los archivos primero.'}), 400
+
+    try:
+        data = request.get_json(force=True)
+        gender_updates = {item['id']: item['genero'] for item in data.get('gender_updates', [])}
+
+        movements_df = last_processed_data['movements_df'].copy()
+        master_df    = last_processed_data['master_df'].copy()
+
+        # Apply gender updates to movements and master DataFrames
+        def apply_gender(df):
+            for idx, row in df.iterrows():
+                nid = str(row.get('NUMERO_IDENTIFICACION_ASEGURADO', ''))
+                if nid in gender_updates and gender_updates[nid]:
+                    df.at[idx, 'GENERO'] = gender_updates[nid]
+            return df
+
+        movements_df = apply_gender(movements_df)
+        master_df    = apply_gender(master_df)
+
+        output_files = generate_output_files(
+            movements_df,
+            master_df,
+            config.OUTPUT_DIR,
+            cobro_mes=last_processed_data.get('cobro_mes', 0),
+            cobro_anio=last_processed_data.get('cobro_anio', 0)
+        )
+
+        # Save to history
+        analytics = last_processed_data['analytics']
+        history_manager.save_processing(movements_df, master_df, analytics)
+
+        return jsonify({
+            'status': 'success',
+            'filenames': {
+                'movements': output_files['movements']['filename'],
+                'master':    output_files['master']['filename']
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error in finalize: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/history', methods=['GET'])
 def get_history() -> Tuple[str, int]:
     """
@@ -201,43 +253,35 @@ def process_files() -> Tuple[str, int]:
         if result['status'] != 'success':
             raise Exception(result.get('error', 'Unknown error'))
 
-        # Cobro date: 26 of the month prior to the selected billing month
-        cobro_mes  = int(request.form.get('cobro_mes',  0))
-        cobro_anio = int(request.form.get('cobro_anio', 0))
-
-        # Generate output files
-        output_files = generate_output_files(
-            result['dataframes']['movements'],
-            result['dataframes']['master'],
-            config.OUTPUT_DIR,
-            cobro_mes=cobro_mes,
-            cobro_anio=cobro_anio
-        )
-
-        # Store data for report generation
+        # Store cobro params and DataFrames for finalize step
         movements_df = result['dataframes']['movements']
-        master_df = result['dataframes']['master']
-        analytics = report_generator.generate_movement_analytics(movements_df, master_df)
+        master_df    = result['dataframes']['master']
 
         last_processed_data['movements_df'] = movements_df
-        last_processed_data['master_df'] = master_df
-        last_processed_data['analytics'] = analytics
+        last_processed_data['master_df']    = master_df
+        last_processed_data['cobro_mes']    = int(request.form.get('cobro_mes',  0))
+        last_processed_data['cobro_anio']   = int(request.form.get('cobro_anio', 0))
+        last_processed_data['analytics']    = report_generator.generate_movement_analytics(movements_df, master_df)
 
-        # Save to history for reconciliation
-        record_id = history_manager.save_processing(movements_df, master_df, analytics)
-        logger.info(f"Processing saved to history with ID: {record_id}")
+        # Build list of ingresos for gender confirmation step
+        ingresos_sin_genero = []
+        for _, row in movements_df.iterrows():
+            if str(row.get('TIPO_NOVEDAD', '')).strip().lower() == 'ingreso':
+                ingresos_sin_genero.append({
+                    'id':       str(row.get('NUMERO_IDENTIFICACION_ASEGURADO', '')),
+                    'apellidos': str(row.get('APELLIDOS_ASEGURADO', '')),
+                    'nombres':   str(row.get('NOMBRES_ASEGURADO', '')),
+                    'genero':    str(row.get('GENERO', '') or '')
+                })
 
-        logger.info("Processing completed successfully")
+        logger.info("Processing completed — awaiting gender confirmation")
 
         return jsonify({
             'status': 'success',
             'statistics': result['statistics'],
-            'filenames': {
-                'movements': output_files['movements']['filename'],
-                'master': output_files['master']['filename']
-            },
+            'ingresos_para_genero': ingresos_sin_genero,
             'preview_movements': result['preview']['movements'],
-            'preview_master': result['preview']['master'],
+            'preview_master':    result['preview']['master'],
             'logs': result['logs']
         })
 

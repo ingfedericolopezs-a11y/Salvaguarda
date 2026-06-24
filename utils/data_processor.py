@@ -353,32 +353,44 @@ def _write_with_template(df: pd.DataFrame, columns: List[str], output_path: str)
     if template and os.path.exists(template):
         shutil.copy2(template, output_path)
         wb = load_workbook(output_path)
-        # Remove Sheet1 and recreate it clean
+        # Remove Sheet1 and recreate it completely clean
         if 'Sheet1' in wb.sheetnames:
             del wb['Sheet1']
         ws = wb.create_sheet('Sheet1')
+        # Remove all data validations from the workbook to avoid system errors
+        for sheet in wb.worksheets:
+            sheet.data_validations.dataValidation = []
     else:
-        # Fallback: create file without template
         from openpyxl import Workbook
         wb = Workbook()
         ws = wb.active
         ws.title = 'Sheet1'
 
-    # Ensure ALL expected columns exist in df (add empty if missing)
+    # Ensure ALL expected columns exist in df
+    df = df.copy()
     for col in columns:
         if col not in df.columns:
-            df = df.copy()
             df[col] = None
 
-    # Write header row — always all columns in order
+    # Numeric and date column types
+    numeric_cols = {'VALOR_ASEGURADO_MUERTE', 'NUMERO_POLIZA'}
+    date_cols    = {'FECHA_NACIMIENTO_ASEGURADO', 'FECHA_NOVEDAD'}
+
+    # Write header row
     for col_idx, col_name in enumerate(columns, start=1):
         ws.cell(row=1, column=col_idx, value=col_name)
 
-    # Write data rows
+    # Write data rows with proper types
     for row_idx, (_, row) in enumerate(df.iterrows(), start=2):
         for col_idx, col_name in enumerate(columns, start=1):
-            val = row.get(col_name)
-            val = _clean_cell(val)
+            val = _clean_cell(row.get(col_name))
+            if val is not None:
+                if col_name in numeric_cols:
+                    try:
+                        val = float(str(val).replace(',', '').strip())
+                        val = int(val) if val == int(val) else val
+                    except (ValueError, TypeError):
+                        pass
             ws.cell(row=row_idx, column=col_idx, value=val)
 
     wb.save(output_path)

@@ -197,16 +197,7 @@ def process_excel_files(
                 logs.append(f"  [!] Error processing {sheet_name}: {e}")
                 logger.error(f"Error processing {fname} - {sheet_name}: {e}")
 
-    # 3. Generate output DataFrames
-    # For movements file - show FECHA_NOVEDAD (date of movement) NOT birth date
-    expected_cols_movements = [
-        'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
-        'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
-        'CARGO', 'GENERO', 'VALOR_ASEGURADO_MUERTE',
-        'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
-    ]
-
-    # For master file - include all columns
+    # 3. Generate output DataFrames — both files use same 11 columns
     expected_cols = [
         'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
         'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
@@ -302,11 +293,11 @@ def generate_output_files(
         'master': f"PLANTILLA_CARGUE_COBRO_{current_month}.xlsx"
     }
 
-    # Columns for movements file (no birth date, only movement date)
+    # Columns for movements file (same as master, includes birth date)
     cols_movements = [
         'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
         'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
-        'CARGO', 'GENERO', 'VALOR_ASEGURADO_MUERTE',
+        'CARGO', 'GENERO', 'FECHA_NACIMIENTO_ASEGURADO', 'VALOR_ASEGURADO_MUERTE',
         'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
     ]
 
@@ -373,17 +364,25 @@ def _write_with_template(df: pd.DataFrame, columns: List[str], output_path: str)
         ws = wb.active
         ws.title = 'Sheet1'
 
-    # Write header row
-    write_cols = [c for c in columns if c in df.columns]
-    for col_idx, col_name in enumerate(write_cols, start=1):
+    # Ensure ALL expected columns exist in df (add empty if missing)
+    for col in columns:
+        if col not in df.columns:
+            df = df.copy()
+            df[col] = None
+
+    # Write header row — always all columns in order
+    for col_idx, col_name in enumerate(columns, start=1):
         ws.cell(row=1, column=col_idx, value=col_name)
 
     # Write data rows
     for row_idx, (_, row) in enumerate(df.iterrows(), start=2):
-        for col_idx, col_name in enumerate(write_cols, start=1):
+        for col_idx, col_name in enumerate(columns, start=1):
             val = row.get(col_name)
-            if pd.isna(val) if not isinstance(val, str) else False:
-                val = None
+            try:
+                if pd.isna(val):
+                    val = None
+            except (TypeError, ValueError):
+                pass
             ws.cell(row=row_idx, column=col_idx, value=val)
 
     wb.save(output_path)

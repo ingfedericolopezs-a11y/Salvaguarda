@@ -378,14 +378,27 @@ def _write_with_template(df: pd.DataFrame, columns: List[str], output_path: str)
     for row_idx, (_, row) in enumerate(df.iterrows(), start=2):
         for col_idx, col_name in enumerate(columns, start=1):
             val = row.get(col_name)
-            try:
-                if pd.isna(val):
-                    val = None
-            except (TypeError, ValueError):
-                pass
+            val = _clean_cell(val)
             ws.cell(row=row_idx, column=col_idx, value=val)
 
     wb.save(output_path)
+
+
+def _clean_cell(val: Any) -> Any:
+    """Return None for any empty/null-like value so Excel cells are truly blank."""
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, float) and (val != val):  # NaN check
+        return None
+    s = str(val).strip()
+    if s.lower() in ('nan', 'none', 'nat', 'n/a', ''):
+        return None
+    return val
 
 
 # Helper functions

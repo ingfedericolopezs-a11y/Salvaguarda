@@ -498,10 +498,23 @@ document.addEventListener('DOMContentLoaded', () => {
     function _applyDownloadLinks(filenames) {
         elements.dlMovements.href = `/api/download/${filenames.movements}`;
         elements.dlMaster.href    = `/api/download/${filenames.master}`;
+
+        // Third file: ingresos after the 26th (for next month)
+        const dlNextMonth = document.getElementById('dl-next-month');
+        if (dlNextMonth) {
+            if (filenames.next_month) {
+                dlNextMonth.href = `/api/download/${filenames.next_month}`;
+                dlNextMonth.style.display = '';
+            } else {
+                dlNextMonth.style.display = 'none';
+            }
+        }
+
         localStorage.setItem('lastProcessedFiles', JSON.stringify({
             timestamp: new Date().toISOString(),
-            movements: filenames.movements,
-            master:    filenames.master
+            movements:  filenames.movements,
+            master:     filenames.master,
+            next_month: filenames.next_month || null
         }));
     }
 
@@ -976,7 +989,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const savedData = localStorage.getItem('lastProcessedFiles');
         if (savedData) {
             try {
-                const { timestamp, movements, master } = JSON.parse(savedData);
+                const { timestamp, movements, master, next_month } = JSON.parse(savedData);
                 const savedTime = new Date(timestamp);
                 const now = new Date();
                 const hoursAgo = (now - savedTime) / (1000 * 60 * 60);
@@ -985,6 +998,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (hoursAgo < 24) {
                     elements.dlMovements.href = `/api/download/${movements}`;
                     elements.dlMaster.href = `/api/download/${master}`;
+
+                    const dlNextMonth = document.getElementById('dl-next-month');
+                    if (dlNextMonth && next_month) {
+                        dlNextMonth.href = `/api/download/${next_month}`;
+                        dlNextMonth.style.display = '';
+                    }
 
                     // Show success state with restored downloads
                     showState('success');

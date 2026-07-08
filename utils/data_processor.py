@@ -290,7 +290,8 @@ def generate_output_files(
 
     filenames = {
         'movements': f"INGRESOS_Y_RETIROS_GENERADOS_{current_month}.xlsx",
-        'master': f"PLANTILLA_CARGUE_COBRO_{current_month}.xlsx"
+        'master': f"PLANTILLA_CARGUE_COBRO_{current_month}.xlsx",
+        'next_month': f"INGRESOS_PARA_MES_SIGUIENTE_{current_month}.xlsx"
     }
 
     # Columns for movements file (same as master, includes birth date)
@@ -316,8 +317,30 @@ def generate_output_files(
         prev_anio = cobro_anio - 1 if cobro_mes == 1 else cobro_anio
         fecha_cobro = f"26/{prev_mes:02d}/{prev_anio}"
 
+    # ── Separate ingresos posteriores al día 26 (van al mes siguiente) ──
+    movements_out = movements_df.copy()
+
+    def _is_late_ingreso(row) -> bool:
+        if str(row.get('TIPO_NOVEDAD', '')).strip().lower() != 'ingreso':
+            return False
+        day = _parse_day(row.get('FECHA_NOVEDAD'))
+        return day is not None and day > 26
+
+    late_mask = movements_out.apply(_is_late_ingreso, axis=1)
+    next_month_df = movements_out[late_mask].copy()
+    movements_out = movements_out[~late_mask].copy()
+
+    # Late ingreso IDs must also be excluded from this month's cobro plantilla
+    late_ids = set(
+        str(v).strip() for v in next_month_df.get('NUMERO_IDENTIFICACION_ASEGURADO', pd.Series(dtype=object))
+    )
+
     # Apply fecha_cobro to master rows with TIPO_NOVEDAD == 'Cobro'
     master_df_out = master_df.copy()
+    if late_ids:
+        cobro_mask = master_df_out['TIPO_NOVEDAD'].astype(str).str.strip().str.lower() == 'cobro'
+        id_mask = master_df_out['NUMERO_IDENTIFICACION_ASEGURADO'].astype(str).str.strip().isin(late_ids)
+        master_df_out = master_df_out[~(cobro_mask & id_mask)].copy()
     if fecha_cobro:
         mask = master_df_out['TIPO_NOVEDAD'].astype(str).str.strip().str.lower() == 'cobro'
         master_df_out.loc[mask, 'FECHA_NOVEDAD'] = fecha_cobro
@@ -327,20 +350,48 @@ def generate_output_files(
         master_path = os.path.join(output_dir, filenames['master'])
 
         # Write movements file using PlantillaCargue template format
-        _write_with_template(movements_df, cols_movements, movements_path)
+        _write_with_template(movements_out, cols_movements, movements_path)
 
         # Write master/cobro file using PlantillaCargue template format
         _write_with_template(master_df_out, cols_master, master_path)
 
-        logger.info(f"Output files generated: {filenames['movements']}, {filenames['master']}")
-
-        return {
+        result = {
             'movements': {'filename': filenames['movements'], 'path': movements_path},
             'master': {'filename': filenames['master'], 'path': master_path}
         }
+
+        # Third file: ingresos after the 26th, to be reported next month
+        if len(next_month_df) > 0:
+            next_month_path = os.path.join(output_dir, filenames['next_month'])
+            _write_with_template(next_month_df, cols_movements, next_month_path)
+            result['next_month'] = {'filename': filenames['next_month'], 'path': next_month_path}
+            logger.info(f"{len(next_month_df)} ingresos posteriores al 26 -> {filenames['next_month']}")
+
+        logger.info(f"Output files generated: {filenames['movements']}, {filenames['master']}")
+        return result
     except Exception as e:
         logger.error(f"Error generating output files: {e}")
         raise
+
+
+def _parse_day(date_val: Any) -> Optional[int]:
+    """Extract the day of month from a DD/MM/YYYY string or datetime value."""
+    if date_val is None:
+        return None
+    if isinstance(date_val, (pd.Timestamp, datetime)):
+        return date_val.day
+    s = str(date_val).strip()
+    if len(s) >= 10 and s[2] == '/':      # DD/MM/YYYY
+        try:
+            return int(s[:2])
+        except ValueError:
+            return None
+    if len(s) >= 10 and s[4] == '-':      # YYYY-MM-DD
+        try:
+            return int(s[8:10])
+        except ValueError:
+            return None
+    return None
 
 
 def _write_with_template(df: pd.DataFrame, columns: List[str], output_path: str) -> None:

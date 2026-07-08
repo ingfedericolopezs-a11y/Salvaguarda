@@ -109,12 +109,16 @@ def finalize_files() -> Tuple[str, int]:
         analytics = last_processed_data['analytics']
         history_manager.save_processing(movements_df, master_df, analytics)
 
+        filenames = {
+            'movements': output_files['movements']['filename'],
+            'master':    output_files['master']['filename']
+        }
+        if 'next_month' in output_files:
+            filenames['next_month'] = output_files['next_month']['filename']
+
         return jsonify({
             'status': 'success',
-            'filenames': {
-                'movements': output_files['movements']['filename'],
-                'master':    output_files['master']['filename']
-            }
+            'filenames': filenames
         })
 
     except Exception as e:

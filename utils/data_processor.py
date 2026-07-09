@@ -238,20 +238,31 @@ def process_excel_files(
 
     # Build master: keep people NOT retired this month, add this month's ingresos as Cobro
     new_master_rows = []
+    seen_ids = set()
     for idx, row in master_df.iterrows():
         c_id = clean_id(row.get('NUMERO_IDENTIFICACION_ASEGURADO'))
-        if c_id and c_id != 'NAN' and c_id not in current_retiro_ids:
-            row_dict = row.to_dict()
-            if 'FECHA_NACIMIENTO_ASEGURADO' in row_dict:
-                row_dict['FECHA_NACIMIENTO_ASEGURADO'] = _format_date(row_dict['FECHA_NACIMIENTO_ASEGURADO'])
-            new_master_rows.append(row_dict)
+        if not c_id or c_id == 'NAN' or c_id in current_retiro_ids or c_id in seen_ids:
+            continue
+        # Skip people already marked as Retiro in the master (no longer insured)
+        if str(row.get('TIPO_NOVEDAD', '')).strip().lower() == 'retiro':
+            continue
+        row_dict = row.to_dict()
+        row_dict['FECHA_NACIMIENTO_ASEGURADO'] = _format_date(row_dict.get('FECHA_NACIMIENTO_ASEGURADO'))
+        # Everyone carried into the cobro plantilla is billed → TIPO_NOVEDAD = Cobro
+        row_dict['TIPO_NOVEDAD'] = 'Cobro'
+        new_master_rows.append(row_dict)
+        seen_ids.add(c_id)
 
     # Add this month's ingresos to master with COBRO tipo_novedad for billing
     for row in current_rows:
         if row['TIPO_NOVEDAD'] == 'Ingreso':
+            c_id = str(row.get('NUMERO_IDENTIFICACION_ASEGURADO', '')).strip()
+            if c_id in seen_ids:
+                continue
             master_row = dict(row)
             master_row['TIPO_NOVEDAD'] = 'Cobro'
             new_master_rows.append(master_row)
+            seen_ids.add(c_id)
 
     new_master_df = pd.DataFrame(new_master_rows)
     for col in expected_cols:

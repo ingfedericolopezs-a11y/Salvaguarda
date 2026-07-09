@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 def process_excel_files(
     master_path: str,
     movement_paths: List[str],
+    cobro_mes: int = 0,
+    cobro_anio: int = 0,
     header_search_rows: int = 20
 ) -> Dict[str, Any]:
     """
@@ -205,22 +207,47 @@ def process_excel_files(
         'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
     ]
 
-    # Sort: Ingresos first, then Retiros
-    processed_rows.sort(key=lambda r: (0 if r['TIPO_NOVEDAD'] == 'Ingreso' else 1))
-    result_df = pd.DataFrame(processed_rows, columns=expected_cols)
+    # ── Split ALL movements by cutoff date (26 of month before cobro month) ──
+    # Anything strictly AFTER the cutoff goes to the "next month" file and does
+    # NOT affect this month's movements or cobro plantilla.
+    cutoff = _cobro_cutoff_date(cobro_mes, cobro_anio)
 
-    # Update master with new ingresos and remove retiros
+    current_rows: List[Dict[str, Any]] = []
+    next_rows: List[Dict[str, Any]] = []
+    for row in processed_rows:
+        mov_date = _parse_full_date(row.get('FECHA_NOVEDAD'))
+        if cutoff and mov_date and mov_date > cutoff:
+            next_rows.append(row)
+        else:
+            current_rows.append(row)
+
+    if cutoff:
+        logs.append(f"Corte de cobro: {cutoff.strftime('%d/%m/%Y')} — "
+                    f"{len(current_rows)} movimientos del mes, {len(next_rows)} para el mes siguiente")
+
+    # Only movements within the current cutoff affect this month's master
+    current_retiro_ids = {r['NUMERO_IDENTIFICACION_ASEGURADO']
+                          for r in current_rows if r['TIPO_NOVEDAD'] == 'Retiro'}
+    current_ingreso_ids = {r['NUMERO_IDENTIFICACION_ASEGURADO']
+                           for r in current_rows if r['TIPO_NOVEDAD'] == 'Ingreso'}
+
+    # Sort current movements: Ingresos first, then Retiros
+    current_rows.sort(key=lambda r: (0 if r['TIPO_NOVEDAD'] == 'Ingreso' else 1))
+    result_df = pd.DataFrame(current_rows, columns=expected_cols)
+    next_month_df = pd.DataFrame(next_rows, columns=expected_cols)
+
+    # Build master: keep people NOT retired this month, add this month's ingresos as Cobro
     new_master_rows = []
     for idx, row in master_df.iterrows():
         c_id = clean_id(row.get('NUMERO_IDENTIFICACION_ASEGURADO'))
-        if c_id and c_id != 'NAN' and c_id not in all_retiros_ids:
+        if c_id and c_id != 'NAN' and c_id not in current_retiro_ids:
             row_dict = row.to_dict()
             if 'FECHA_NACIMIENTO_ASEGURADO' in row_dict:
                 row_dict['FECHA_NACIMIENTO_ASEGURADO'] = _format_date(row_dict['FECHA_NACIMIENTO_ASEGURADO'])
             new_master_rows.append(row_dict)
 
-    # Add new ingresos to master with COBRO tipo_novedad for billing
-    for row in processed_rows:
+    # Add this month's ingresos to master with COBRO tipo_novedad for billing
+    for row in current_rows:
         if row['TIPO_NOVEDAD'] == 'Ingreso':
             master_row = dict(row)
             master_row['TIPO_NOVEDAD'] = 'Cobro'
@@ -242,14 +269,16 @@ def process_excel_files(
         'status': 'success',
         'statistics': {
             'total_movements': len(result_df),
-            'total_ingresos': len(all_ingresos_ids),
-            'total_retiros': len(all_retiros_ids),
+            'total_ingresos': len(current_ingreso_ids),
+            'total_retiros': len(current_retiro_ids),
+            'total_next_month': len(next_month_df),
             'master_total_before': len(master_df),
             'master_total_after': len(new_master_df)
         },
         'dataframes': {
             'movements': result_df,
-            'master': new_master_df
+            'master': new_master_df,
+            'next_month': next_month_df
         },
         'preview': {
             'movements': preview_movs,
@@ -264,46 +293,35 @@ def generate_output_files(
     master_df: pd.DataFrame,
     output_dir: str,
     cobro_mes: int = 0,
-    cobro_anio: int = 0
+    cobro_anio: int = 0,
+    next_month_df: Optional[pd.DataFrame] = None
 ) -> Dict[str, Dict[str, str]]:
     """
     Write processed DataFrames to Excel files.
 
-    Creates two Excel files:
+    The DataFrames arrive already split by cutoff date in process_excel_files:
+    - movements_df: this month's movements (on/before the 26 cutoff)
+    - master_df: this month's cobro plantilla
+    - next_month_df: movements after the 26 cutoff (next billing cycle)
+
+    Creates up to three Excel files:
     - INGRESOS_Y_RETIROS_GENERADOS_[MONTH]_[YEAR].xlsx
     - PLANTILLA_CARGUE_COBRO_[MONTH]_[YEAR].xlsx
-
-    Args:
-        movements_df: Processed movements DataFrame
-        master_df: Updated master DataFrame
-        output_dir: Output directory path
+    - MOVIMIENTOS_PARA_MES_SIGUIENTE_[MONTH]_[YEAR].xlsx (only if there are any)
 
     Returns:
-        Dict[str, Dict[str, str]]: File metadata with keys 'movements' and 'master',
-            each containing 'filename' and 'path'
-
-    Raises:
-        FileNotFoundError: If output directory does not exist
-        Exception: If file writing fails
+        Dict[str, Dict[str, str]]: File metadata keyed by 'movements', 'master',
+            and optionally 'next_month'; each has 'filename' and 'path'.
     """
     current_month: str = datetime.now().strftime('%B_%Y').upper()
 
     filenames = {
         'movements': f"INGRESOS_Y_RETIROS_GENERADOS_{current_month}.xlsx",
         'master': f"PLANTILLA_CARGUE_COBRO_{current_month}.xlsx",
-        'next_month': f"INGRESOS_PARA_MES_SIGUIENTE_{current_month}.xlsx"
+        'next_month': f"MOVIMIENTOS_PARA_MES_SIGUIENTE_{current_month}.xlsx"
     }
 
-    # Columns for movements file (same as master, includes birth date)
-    cols_movements = [
-        'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
-        'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
-        'CARGO', 'GENERO', 'FECHA_NACIMIENTO_ASEGURADO', 'VALOR_ASEGURADO_MUERTE',
-        'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
-    ]
-
-    # Columns for master/cobro file (includes birth date)
-    cols_master = [
+    cols = [
         'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
         'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
         'CARGO', 'GENERO', 'FECHA_NACIMIENTO_ASEGURADO', 'VALOR_ASEGURADO_MUERTE',
@@ -317,30 +335,8 @@ def generate_output_files(
         prev_anio = cobro_anio - 1 if cobro_mes == 1 else cobro_anio
         fecha_cobro = f"26/{prev_mes:02d}/{prev_anio}"
 
-    # ── Separate ingresos posteriores al día 26 (van al mes siguiente) ──
-    movements_out = movements_df.copy()
-
-    def _is_late_ingreso(row) -> bool:
-        if str(row.get('TIPO_NOVEDAD', '')).strip().lower() != 'ingreso':
-            return False
-        day = _parse_day(row.get('FECHA_NOVEDAD'))
-        return day is not None and day > 26
-
-    late_mask = movements_out.apply(_is_late_ingreso, axis=1)
-    next_month_df = movements_out[late_mask].copy()
-    movements_out = movements_out[~late_mask].copy()
-
-    # Late ingreso IDs must also be excluded from this month's cobro plantilla
-    late_ids = set(
-        str(v).strip() for v in next_month_df.get('NUMERO_IDENTIFICACION_ASEGURADO', pd.Series(dtype=object))
-    )
-
-    # Apply fecha_cobro to master rows with TIPO_NOVEDAD == 'Cobro'
+    # Apply fecha_cobro to cobro rows in the plantilla
     master_df_out = master_df.copy()
-    if late_ids:
-        cobro_mask = master_df_out['TIPO_NOVEDAD'].astype(str).str.strip().str.lower() == 'cobro'
-        id_mask = master_df_out['NUMERO_IDENTIFICACION_ASEGURADO'].astype(str).str.strip().isin(late_ids)
-        master_df_out = master_df_out[~(cobro_mask & id_mask)].copy()
     if fecha_cobro:
         mask = master_df_out['TIPO_NOVEDAD'].astype(str).str.strip().str.lower() == 'cobro'
         master_df_out.loc[mask, 'FECHA_NOVEDAD'] = fecha_cobro
@@ -349,23 +345,20 @@ def generate_output_files(
         movements_path = os.path.join(output_dir, filenames['movements'])
         master_path = os.path.join(output_dir, filenames['master'])
 
-        # Write movements file using PlantillaCargue template format
-        _write_with_template(movements_out, cols_movements, movements_path)
-
-        # Write master/cobro file using PlantillaCargue template format
-        _write_with_template(master_df_out, cols_master, master_path)
+        _write_with_template(movements_df, cols, movements_path)
+        _write_with_template(master_df_out, cols, master_path)
 
         result = {
             'movements': {'filename': filenames['movements'], 'path': movements_path},
             'master': {'filename': filenames['master'], 'path': master_path}
         }
 
-        # Third file: ingresos after the 26th, to be reported next month
-        if len(next_month_df) > 0:
+        # Third file: movements after the 26th, reported next billing cycle
+        if next_month_df is not None and len(next_month_df) > 0:
             next_month_path = os.path.join(output_dir, filenames['next_month'])
-            _write_with_template(next_month_df, cols_movements, next_month_path)
+            _write_with_template(next_month_df, cols, next_month_path)
             result['next_month'] = {'filename': filenames['next_month'], 'path': next_month_path}
-            logger.info(f"{len(next_month_df)} ingresos posteriores al 26 -> {filenames['next_month']}")
+            logger.info(f"{len(next_month_df)} movimientos posteriores al 26 -> {filenames['next_month']}")
 
         logger.info(f"Output files generated: {filenames['movements']}, {filenames['master']}")
         return result
@@ -374,23 +367,32 @@ def generate_output_files(
         raise
 
 
-def _parse_day(date_val: Any) -> Optional[int]:
-    """Extract the day of month from a DD/MM/YYYY string or datetime value."""
+def _cobro_cutoff_date(cobro_mes: int, cobro_anio: int) -> Optional[datetime]:
+    """Return the cutoff datetime = 26 of the month BEFORE the cobro month."""
+    if not cobro_mes or not cobro_anio:
+        return None
+    prev_mes  = 12 if cobro_mes == 1 else cobro_mes - 1
+    prev_anio = cobro_anio - 1 if cobro_mes == 1 else cobro_anio
+    return datetime(prev_anio, prev_mes, 26)
+
+
+def _parse_full_date(date_val: Any) -> Optional[datetime]:
+    """Parse a date value (DD/MM/YYYY, YYYY-MM-DD, Timestamp/datetime) into a datetime."""
     if date_val is None:
         return None
     if isinstance(date_val, (pd.Timestamp, datetime)):
-        return date_val.day
+        try:
+            return datetime(date_val.year, date_val.month, date_val.day)
+        except (ValueError, AttributeError):
+            return None
     s = str(date_val).strip()
-    if len(s) >= 10 and s[2] == '/':      # DD/MM/YYYY
+    if not s or s.lower() in ('nan', 'nat', 'none'):
+        return None
+    for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y'):
         try:
-            return int(s[:2])
+            return datetime.strptime(s[:10], fmt)
         except ValueError:
-            return None
-    if len(s) >= 10 and s[4] == '-':      # YYYY-MM-DD
-        try:
-            return int(s[8:10])
-        except ValueError:
-            return None
+            continue
     return None
 
 

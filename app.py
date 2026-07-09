@@ -53,7 +53,10 @@ history_manager = HistoryManager(history_dir)
 last_processed_data: Dict[str, Any] = {
     'movements_df': None,
     'master_df': None,
-    'analytics': None
+    'next_month_df': None,
+    'analytics': None,
+    'cobro_mes': 0,
+    'cobro_anio': 0
 }
 
 EXCEL_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -85,24 +88,31 @@ def finalize_files() -> Tuple[str, int]:
 
         movements_df = last_processed_data['movements_df'].copy()
         master_df    = last_processed_data['master_df'].copy()
+        next_month_df = last_processed_data.get('next_month_df')
+        if next_month_df is not None:
+            next_month_df = next_month_df.copy()
 
-        # Apply gender updates to movements and master DataFrames
+        # Apply gender updates to all DataFrames
         def apply_gender(df):
+            if df is None:
+                return None
             for idx, row in df.iterrows():
                 nid = str(row.get('NUMERO_IDENTIFICACION_ASEGURADO', ''))
                 if nid in gender_updates and gender_updates[nid]:
                     df.at[idx, 'GENERO'] = gender_updates[nid]
             return df
 
-        movements_df = apply_gender(movements_df)
-        master_df    = apply_gender(master_df)
+        movements_df  = apply_gender(movements_df)
+        master_df     = apply_gender(master_df)
+        next_month_df = apply_gender(next_month_df)
 
         output_files = generate_output_files(
             movements_df,
             master_df,
             config.OUTPUT_DIR,
             cobro_mes=last_processed_data.get('cobro_mes', 0),
-            cobro_anio=last_processed_data.get('cobro_anio', 0)
+            cobro_anio=last_processed_data.get('cobro_anio', 0),
+            next_month_df=next_month_df
         )
 
         # Save to history
@@ -250,33 +260,44 @@ def process_files() -> Tuple[str, int]:
                 saved_movement_paths.append(fpath)
                 logger.info(f"Saved movement file: {fpath}")
 
+        # Cobro month/year drives the 26-of-previous-month cutoff
+        cobro_mes  = int(request.form.get('cobro_mes',  0))
+        cobro_anio = int(request.form.get('cobro_anio', 0))
+
         # Process data
         logger.info("Starting data processing...")
-        result = process_excel_files(master_path, saved_movement_paths)
+        result = process_excel_files(master_path, saved_movement_paths,
+                                     cobro_mes=cobro_mes, cobro_anio=cobro_anio)
 
         if result['status'] != 'success':
             raise Exception(result.get('error', 'Unknown error'))
 
-        # Store cobro params and DataFrames for finalize step
-        movements_df = result['dataframes']['movements']
-        master_df    = result['dataframes']['master']
+        # Store DataFrames and cobro params for finalize step
+        movements_df  = result['dataframes']['movements']
+        master_df     = result['dataframes']['master']
+        next_month_df = result['dataframes'].get('next_month')
 
-        last_processed_data['movements_df'] = movements_df
-        last_processed_data['master_df']    = master_df
-        last_processed_data['cobro_mes']    = int(request.form.get('cobro_mes',  0))
-        last_processed_data['cobro_anio']   = int(request.form.get('cobro_anio', 0))
-        last_processed_data['analytics']    = report_generator.generate_movement_analytics(movements_df, master_df)
+        last_processed_data['movements_df']  = movements_df
+        last_processed_data['master_df']     = master_df
+        last_processed_data['next_month_df'] = next_month_df
+        last_processed_data['cobro_mes']     = cobro_mes
+        last_processed_data['cobro_anio']    = cobro_anio
+        last_processed_data['analytics']     = report_generator.generate_movement_analytics(movements_df, master_df)
 
-        # Build list of ingresos for gender confirmation step
+        # Build list of ingresos for gender confirmation (current + next month)
         ingresos_sin_genero = []
-        for _, row in movements_df.iterrows():
-            if str(row.get('TIPO_NOVEDAD', '')).strip().lower() == 'ingreso':
-                ingresos_sin_genero.append({
-                    'id':       str(row.get('NUMERO_IDENTIFICACION_ASEGURADO', '')),
-                    'apellidos': str(row.get('APELLIDOS_ASEGURADO', '')),
-                    'nombres':   str(row.get('NOMBRES_ASEGURADO', '')),
-                    'genero':    str(row.get('GENERO', '') or '')
-                })
+        frames = [movements_df]
+        if next_month_df is not None:
+            frames.append(next_month_df)
+        for frame in frames:
+            for _, row in frame.iterrows():
+                if str(row.get('TIPO_NOVEDAD', '')).strip().lower() == 'ingreso':
+                    ingresos_sin_genero.append({
+                        'id':       str(row.get('NUMERO_IDENTIFICACION_ASEGURADO', '')),
+                        'apellidos': str(row.get('APELLIDOS_ASEGURADO', '')),
+                        'nombres':   str(row.get('NOMBRES_ASEGURADO', '')),
+                        'genero':    str(row.get('GENERO', '') or '')
+                    })
 
         logger.info("Processing completed — awaiting gender confirmation")
 

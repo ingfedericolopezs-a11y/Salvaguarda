@@ -84,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Application state with better organization
     const state = {
         masterFile: null,
+        pendingFile: null,
         movementFiles: [],
         previewData: { movements: [], master: [] },
         currentPreviewTab: 'movements',
@@ -123,6 +124,9 @@ document.addEventListener('DOMContentLoaded', () => {
         get movementsDropzone() { return getElement('movements-dropzone'); },
         get movementsInput() { return getElement('movement_files'); },
         get movementsList() { return getElement('movements-list'); },
+        get pendingDropzone() { return getElement('pending-dropzone'); },
+        get pendingInput() { return getElement('pending_file'); },
+        get pendingSize() { return getElement('pending-size'); },
         get btnProcess() { return getElement('btn-process'); },
 
         // Results States
@@ -217,11 +221,11 @@ document.addEventListener('DOMContentLoaded', () => {
      * Validate form inputs
      */
     function validateInputs() {
-        const hasFiles = state.masterFile && state.movementFiles.length > 0;
+        const hasFiles = state.masterFile && (state.movementFiles.length > 0 || state.pendingFile);
         elements.btnProcess.disabled = !hasFiles;
         elements.btnProcess.title = hasFiles
             ? 'Hacer clic para procesar los archivos'
-            : 'Carga ambos tipos de archivos para procesar';
+            : 'Carga el maestro y al menos un archivo de movimientos o pendientes';
     }
 
     /**
@@ -330,6 +334,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Pending Movements File Handler (optional, from previous period)
+    setupDropzone(elements.pendingDropzone, elements.pendingInput, (files) => {
+        const file = files[0];
+        if (!file.name.endsWith('.xlsx')) {
+            showNotification('❌ Error: El archivo debe ser Excel (.xlsx)', 'error');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            showNotification('❌ Error: El archivo es demasiado grande (máx. 10MB)', 'error');
+            return;
+        }
+
+        state.pendingFile = file;
+        elements.pendingSize.textContent = `✓ ${file.name} (${formatBytes(file.size)})`;
+        elements.pendingSize.classList.remove('hidden');
+        showNotification('📆 Movimientos pendientes del mes anterior cargados', 'info');
+        validateInputs();
+    });
+
     /**
      * Update movements list display
      * Optimized rendering
@@ -436,6 +459,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('master_file', state.masterFile);
         state.movementFiles.forEach(f => formData.append('movement_files', f));
+        // Pending movements from previous period: sent as another movement file
+        // (the backend auto-detects the generated format and ingests it)
+        if (state.pendingFile) {
+            formData.append('movement_files', state.pendingFile);
+        }
         formData.append('cobro_mes',  cobro.mes);
         formData.append('cobro_anio', cobro.anio);
 

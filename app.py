@@ -24,7 +24,7 @@ from utils import (
 from utils.file_handler import create_run_directory, ensure_directories
 from utils.report_generator import ReportGenerator
 from utils.history_manager import HistoryManager
-from utils.splitter import split_ingresos_egresos  # Independent split module
+from utils.splitter import analyze_files, generate_split_files  # Independent split module
 
 
 # Configure logging
@@ -48,6 +48,9 @@ ensure_directories(config.UPLOAD_DIR, config.OUTPUT_DIR)
 # Independent module: output directory for the ingresos/egresos splitter
 SPLIT_DIR = os.path.join(config.OUTPUT_DIR, 'divisiones')
 os.makedirs(SPLIT_DIR, exist_ok=True)
+
+# In-memory state for the split module's two-step flow (analyze -> finalize)
+last_split_data: Dict[str, Any] = {'ingreso_records': [], 'egreso_records': []}
 
 # Initialize report generator and history manager
 report_generator = ReportGenerator(config.OUTPUT_DIR)
@@ -214,7 +217,7 @@ def download_file(filename: str) -> Tuple[Any, int]:
 
 @app.route('/api/split', methods=['POST'])
 def split_files() -> Tuple[str, int]:
-    """Split uploaded files into ingresos/egresos blocks of 20 and bundle a ZIP."""
+    """Step 1: analyze files (+ optional master), classify, ask gender for ingresos."""
     files = request.files.getlist('split_files')
     if not files or (len(files) == 1 and files[0].filename == ''):
         return jsonify({'error': 'Falta seleccionar los archivos a dividir.'}), 400
@@ -225,8 +228,20 @@ def split_files() -> Tuple[str, int]:
             if not is_valid:
                 return jsonify({'error': f'{f.filename}: {error_msg}'}), 400
 
+    master_file = request.files.get('split_master')
+    if master_file is not None and master_file.filename != '':
+        is_valid, error_msg = validate_file(master_file)
+        if not is_valid:
+            return jsonify({'error': f'Archivo madre: {error_msg}'}), 400
+
     try:
         run_upload_dir = create_run_directory(config.UPLOAD_DIR)
+
+        master_path = None
+        if master_file is not None and master_file.filename != '':
+            master_path = os.path.join(run_upload_dir, master_file.filename)
+            master_file.save(master_path)
+
         saved_paths = []
         for f in files:
             if f.filename != '':
@@ -234,27 +249,53 @@ def split_files() -> Tuple[str, int]:
                 f.save(fpath)
                 saved_paths.append(fpath)
 
-        result = split_ingresos_egresos(saved_paths, SPLIT_DIR)
-
+        result = analyze_files(master_path, saved_paths)
         if result['status'] != 'success':
-            return jsonify({'error': result.get('error', 'Error al dividir archivos')}), 400
+            return jsonify({'error': result.get('error', 'Error al analizar archivos')}), 400
 
-        logger.info(f"Split done: {result['ingresos_files']} ingresos, "
-                    f"{result['egresos_files']} egresos files")
+        last_split_data['ingreso_records'] = result['ingreso_records']
+        last_split_data['egreso_records'] = result['egreso_records']
 
         return jsonify({
             'status': 'success',
-            'total_ingresos': result['total_ingresos'],
-            'total_egresos': result['total_egresos'],
-            'ingresos_files': result['ingresos_files'],
-            'egresos_files': result['egresos_files'],
-            'files': result['files'],
-            'zip_filename': result['zip_filename']
+            'total_ingresos': len(result['ingreso_records']),
+            'total_egresos': len(result['egreso_records']),
+            'ingresos_para_genero': result['ingresos_para_genero']
         })
     except RequestEntityTooLarge:
         return jsonify({'error': 'Uno o más archivos es demasiado grande'}), 413
     except Exception as e:
         logger.error(f"Error in split_files: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/split/finalize', methods=['POST'])
+def split_finalize() -> Tuple[str, int]:
+    """Step 2: apply gender to ingresos, write blocks of 20 and bundle a ZIP."""
+    if not last_split_data['ingreso_records'] and not last_split_data['egreso_records']:
+        return jsonify({'error': 'No hay datos analizados. Procesa los archivos primero.'}), 400
+
+    try:
+        data = request.get_json(force=True) or {}
+        gender_updates = {item['id']: item['genero'] for item in data.get('gender_updates', [])}
+
+        ingresos = [dict(r) for r in last_split_data['ingreso_records']]
+        egresos = [dict(r) for r in last_split_data['egreso_records']]
+
+        for r in ingresos:
+            nid = str(r.get('NUMERO_IDENTIFICACION_ASEGURADO', ''))
+            if nid in gender_updates and gender_updates[nid]:
+                r['GENERO'] = gender_updates[nid]
+
+        result = generate_split_files(ingresos, egresos, SPLIT_DIR)
+        if result['status'] != 'success':
+            return jsonify({'error': result.get('error', 'Error al generar archivos')}), 400
+
+        logger.info(f"Split done: {result['ingresos_files']} ingresos, "
+                    f"{result['egresos_files']} egresos files")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in split_finalize: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

@@ -1,10 +1,10 @@
 """
 Independent module: split ingresos and egresos into blocks of N people.
 
-This module is fully self-contained and does NOT touch the monthly
-reconciliation logic. It reads one or more uploaded Excel files, classifies
-records into INGRESOS and EGRESOS, and writes one Excel file per block of
-`block_size` records (default 20), preserving the original column structure.
+Fully self-contained orchestration. It REUSES (read-only) helper functions
+from data_processor so the output format is IDENTICAL to the monthly
+reconciliation output (PlantillaCargue: 'Descripcion Campos' sheet intact +
+Sheet1 with the standard 11 columns). It never modifies that module.
 """
 
 import os
@@ -15,36 +15,57 @@ from typing import Dict, List, Any, Tuple, Optional
 
 import pandas as pd
 
+import config
+from .validators import clean_id, split_name
+from .data_processor import (
+    _read_excel_safe, _find_header_row, _find_column,
+    _format_date, _normalize_genero, _write_with_template,
+)
+
 logger = logging.getLogger(__name__)
 
 BLOCK_SIZE = 20
 
-# Keywords used to locate the header row inside raw movement sheets
-_HEADER_KEYWORDS = ['IDENTIFICACION', 'C.C.', 'CEDULA', 'N° DOC', 'DOC', 'DOCUMENTO']
+# Same 11 columns / order as the reconciliation output
+COLS = [
+    'NUMERO_POLIZA', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO',
+    'TIPO_IDENTIFICACION_ASEGURADO', 'NUMERO_IDENTIFICACION_ASEGURADO',
+    'CARGO', 'GENERO', 'FECHA_NACIMIENTO_ASEGURADO', 'VALOR_ASEGURADO_MUERTE',
+    'TIPO_NOVEDAD', 'FECHA_NOVEDAD'
+]
 
 
-def split_ingresos_egresos(
-    file_paths: List[str],
-    output_dir: str,
-    block_size: int = BLOCK_SIZE
-) -> Dict[str, Any]:
+def analyze_files(master_path: Optional[str], file_paths: List[str]) -> Dict[str, Any]:
     """
-    Read files, classify records and write blocks of `block_size`.
+    Read the (optional) master file and the data files, classify each record
+    into ingreso/egreso and normalize it to the standard 11-column format.
 
-    Returns a dict with:
-        - status: 'success' or 'error'
-        - total_ingresos / total_egresos: record counts
-        - ingresos_files / egresos_files: number of files generated
-        - files: list of {'filename', 'category'} generated
-        - zip_filename: name of the ZIP bundling all generated files
-        - logs: processing messages
+    Returns:
+        status, ingreso_records, egreso_records, ingresos_para_genero, logs
     """
     logs: List[str] = []
 
-    ingresos_rows: List[Dict[str, Any]] = []
-    egresos_rows: List[Dict[str, Any]] = []
-    ingresos_cols: List[str] = []
-    egresos_cols: List[str] = []
+    # Build master lookup (current state of who is insured)
+    id_lookup: Dict[str, Dict[str, Any]] = {}
+    if master_path:
+        try:
+            master_df = _read_excel_safe(master_path)
+            for _, row in master_df.iterrows():
+                cid = clean_id(row.get('NUMERO_IDENTIFICACION_ASEGURADO'))
+                if cid:
+                    id_lookup[cid] = {
+                        'CARGO': row.get('CARGO'),
+                        'GENERO': _normalize_genero(row.get('GENERO')),
+                        'FECHA_NACIMIENTO_ASEGURADO': row.get('FECHA_NACIMIENTO_ASEGURADO'),
+                        'VALOR_ASEGURADO_MUERTE': row.get('VALOR_ASEGURADO_MUERTE', 5000000),
+                    }
+            logs.append(f"Archivo madre: {len(id_lookup)} personas registradas")
+        except Exception as e:
+            logs.append(f"[!] No se pudo leer el archivo madre: {e}")
+
+    ingreso_records: List[Dict[str, Any]] = []
+    egreso_records: List[Dict[str, Any]] = []
+    seen: set = set()
 
     for fpath in file_paths:
         fname = os.path.basename(fpath)
@@ -59,26 +80,19 @@ def split_ingresos_egresos(
         # ── Case A: raw movement file with INGRESOS / RETIROS sheets ──
         for sheet_name in xl.sheet_names:
             up = str(sheet_name).strip().upper()
-            if up in ('INGRESOS', 'RETIROS', 'EGRESOS'):
-                cols, rows = _read_sheet_table(fpath, sheet_name)
-                if not rows:
-                    continue
+            if up not in ('INGRESOS', 'RETIROS', 'EGRESOS'):
+                continue
+            is_ingreso = (up == 'INGRESOS')
+            recs = _extract_from_raw_sheet(fpath, sheet_name, is_ingreso, id_lookup, seen)
+            if recs:
                 handled = True
-                if up == 'INGRESOS':
-                    if not ingresos_cols:
-                        ingresos_cols = cols
-                    ingresos_rows.extend(rows)
-                    logs.append(f"{fname} [{sheet_name}]: {len(rows)} ingresos")
-                else:
-                    if not egresos_cols:
-                        egresos_cols = cols
-                    egresos_rows.extend(rows)
-                    logs.append(f"{fname} [{sheet_name}]: {len(rows)} egresos")
+                (ingreso_records if is_ingreso else egreso_records).extend(recs)
+                logs.append(f"{fname} [{sheet_name}]: {len(recs)} {'ingresos' if is_ingreso else 'egresos'}")
 
         if handled:
             continue
 
-        # ── Case B: generated / PlantillaCargue format with TIPO_NOVEDAD ──
+        # ── Case B: generated / PlantillaCargue format (Sheet1 + TIPO_NOVEDAD) ──
         sheet = 'Sheet1' if 'Sheet1' in xl.sheet_names else xl.sheet_names[-1]
         try:
             df = pd.read_excel(fpath, sheet_name=sheet)
@@ -86,139 +100,213 @@ def split_ingresos_egresos(
             logs.append(f"[!] Error leyendo {fname}: {e}")
             continue
 
-        cols = [str(c) for c in df.columns]
-        tipo_col = _find_tipo_column(cols)
+        cols = [str(c).upper().strip() for c in df.columns]
+        df.columns = cols
+        tipo_col = _find_column(cols, ['TIPO_NOVEDAD', 'NOVEDAD', 'TIPO'])
         if not tipo_col:
-            logs.append(f"[!] {fname}: no se encontró columna de tipo (INGRESO/EGRESO); omitido")
+            logs.append(f"[!] {fname}: sin columna de tipo (INGRESO/EGRESO); omitido")
             continue
 
         n_ing = n_egr = 0
         for _, row in df.iterrows():
-            record = {c: _clean(row.get(c)) for c in cols}
             cat = _classify(row.get(tipo_col))
+            if cat is None:
+                continue
+            rec = _normalize_generated_row(row, cat == 'ingreso', id_lookup)
+            if rec is None:
+                continue
+            key = (rec['NUMERO_IDENTIFICACION_ASEGURADO'], rec['TIPO_NOVEDAD'], rec['FECHA_NOVEDAD'])
+            if key in seen:
+                continue
+            seen.add(key)
             if cat == 'ingreso':
-                if not ingresos_cols:
-                    ingresos_cols = cols
-                ingresos_rows.append(record)
-                n_ing += 1
-            elif cat == 'egreso':
-                if not egresos_cols:
-                    egresos_cols = cols
-                egresos_rows.append(record)
-                n_egr += 1
-
+                ingreso_records.append(rec); n_ing += 1
+            else:
+                egreso_records.append(rec); n_egr += 1
         logs.append(f"{fname}: {n_ing} ingresos, {n_egr} egresos")
 
-    # ── Write blocks directly into output_dir (so downloads resolve by name) ──
+    # Ingresos that need gender confirmation
+    ingresos_para_genero = [{
+        'id': r['NUMERO_IDENTIFICACION_ASEGURADO'],
+        'apellidos': r['APELLIDOS_ASEGURADO'] or '',
+        'nombres': r['NOMBRES_ASEGURADO'] or '',
+        'genero': r['GENERO'] or ''
+    } for r in ingreso_records]
+
+    return {
+        'status': 'success',
+        'ingreso_records': ingreso_records,
+        'egreso_records': egreso_records,
+        'ingresos_para_genero': ingresos_para_genero,
+        'logs': logs
+    }
+
+
+def generate_split_files(
+    ingreso_records: List[Dict[str, Any]],
+    egreso_records: List[Dict[str, Any]],
+    output_dir: str,
+    block_size: int = BLOCK_SIZE
+) -> Dict[str, Any]:
+    """Write blocks of `block_size` in PlantillaCargue format and bundle a ZIP."""
     os.makedirs(output_dir, exist_ok=True)
     run_stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     generated: List[Dict[str, str]] = []
-    generated += _write_blocks(ingresos_rows, ingresos_cols, 'Ingresos', 'INGRESOS', output_dir, block_size)
-    generated += _write_blocks(egresos_rows, egresos_cols, 'Egresos', 'EGRESOS', output_dir, block_size)
+    generated += _write_blocks(ingreso_records, 'Ingresos', output_dir, block_size)
+    generated += _write_blocks(egreso_records, 'Egresos', output_dir, block_size)
 
     if not generated:
-        return {
-            'status': 'error',
-            'error': 'No se encontraron registros de ingresos ni egresos en los archivos.',
-            'logs': logs
-        }
+        return {'status': 'error',
+                'error': 'No se encontraron registros de ingresos ni egresos.'}
 
-    # ── Bundle everything into a ZIP ──
     zip_filename = f"DIVISION_INGRESOS_EGRESOS_{run_stamp}.zip"
     zip_path = os.path.join(output_dir, zip_filename)
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         for item in generated:
             zf.write(os.path.join(output_dir, item['filename']), arcname=item['filename'])
 
-    ingresos_files = sum(1 for g in generated if g['category'] == 'Ingresos')
-    egresos_files = sum(1 for g in generated if g['category'] == 'Egresos')
-
-    logs.append(f"Generados {ingresos_files} archivos de ingresos y {egresos_files} de egresos")
-
     return {
         'status': 'success',
-        'total_ingresos': len(ingresos_rows),
-        'total_egresos': len(egresos_rows),
-        'ingresos_files': ingresos_files,
-        'egresos_files': egresos_files,
+        'total_ingresos': len(ingreso_records),
+        'total_egresos': len(egreso_records),
+        'ingresos_files': sum(1 for g in generated if g['category'] == 'Ingresos'),
+        'egresos_files': sum(1 for g in generated if g['category'] == 'Egresos'),
         'files': generated,
-        'zip_filename': zip_filename,
-        'logs': logs
+        'zip_filename': zip_filename
     }
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _write_blocks(
-    rows: List[Dict[str, Any]],
-    cols: List[str],
-    label: str,
-    sheet_name: str,
-    out_dir: str,
-    block_size: int
-) -> List[Dict[str, str]]:
-    """Write `rows` in chunks of `block_size` as label_01.xlsx, label_02.xlsx…"""
-    if not rows:
+def _write_blocks(records: List[Dict[str, Any]], label: str,
+                  out_dir: str, block_size: int) -> List[Dict[str, str]]:
+    """Write records in chunks of block_size using the PlantillaCargue template."""
+    if not records:
         return []
-    if not cols:
-        cols = list(rows[0].keys())
-
     written: List[Dict[str, str]] = []
-    total_blocks = (len(rows) + block_size - 1) // block_size
-    for i in range(total_blocks):
-        chunk = rows[i * block_size:(i + 1) * block_size]
-        block_df = pd.DataFrame(chunk, columns=cols)
+    total = (len(records) + block_size - 1) // block_size
+    for i in range(total):
+        chunk = records[i * block_size:(i + 1) * block_size]
+        block_df = pd.DataFrame(chunk, columns=COLS)
         filename = f"{label}_{i + 1:02d}.xlsx"
-        path = os.path.join(out_dir, filename)
-        with pd.ExcelWriter(path, engine='openpyxl') as writer:
-            block_df.to_excel(writer, index=False, sheet_name=sheet_name)
+        _write_with_template(block_df, COLS, os.path.join(out_dir, filename))
         written.append({'filename': filename, 'category': label})
     return written
 
 
-def _read_sheet_table(fpath: str, sheet_name: str) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """Read a raw movement sheet: locate the header row, return columns and records."""
+def _extract_from_raw_sheet(fpath: str, sheet_name: str, is_ingreso: bool,
+                            id_lookup: Dict[str, Dict[str, Any]],
+                            seen: set) -> List[Dict[str, Any]]:
+    """Extract normalized records from a raw INGRESOS/RETIROS sheet."""
     try:
-        raw = pd.read_excel(fpath, sheet_name=sheet_name, header=None)
+        df_raw = pd.read_excel(fpath, sheet_name=sheet_name, header=None)
     except Exception:
-        return [], []
+        return []
 
-    header_idx = -1
-    for i in range(min(25, len(raw))):
-        row_str = " ".join(str(x).upper() for x in raw.iloc[i].values)
-        if any(kw in row_str for kw in _HEADER_KEYWORDS):
-            header_idx = i
-            break
+    header_idx = _find_header_row(df_raw, 25)
     if header_idx == -1:
-        return [], []
+        return []
 
-    cols = [str(c).strip() for c in raw.iloc[header_idx].values]
-    # De-duplicate / clean empty column names
-    clean_cols = []
-    for idx, c in enumerate(cols):
-        if not c or c.lower() == 'nan':
-            c = f"COL_{idx + 1}"
-        clean_cols.append(c)
+    df = df_raw.iloc[header_idx + 1:].copy()
+    cols = [str(c).upper().strip() for c in df_raw.iloc[header_idx].values]
+    df.columns = cols
 
-    rows: List[Dict[str, Any]] = []
-    for _, r in raw.iloc[header_idx + 1:].iterrows():
-        values = list(r.values)
-        # Skip fully empty rows
-        if all(_is_empty(v) for v in values):
-            continue
-        record = {clean_cols[j]: _clean(values[j]) for j in range(min(len(clean_cols), len(values)))}
-        rows.append(record)
-    return clean_cols, rows
-
-
-def _find_tipo_column(cols: List[str]) -> Optional[str]:
-    """Find the column that holds the movement type."""
+    id_col = _find_column(cols, ['IDENTIFICACION', 'C.C.', 'CEDULA', 'DOC'])
+    name_col = _find_column(cols, ['NOMBRE', 'RAZON SOCIAL', 'APELLIDO'])
+    fecha_nac_col = _find_column(cols, ['NACIMIENTO'])
+    fecha_nov_col = None
     for c in cols:
-        cu = str(c).upper()
-        if 'TIPO_NOVEDAD' in cu or 'TIPO NOVEDAD' in cu or cu == 'TIPO' or 'NOVEDAD' in cu:
-            return c
-    return None
+        cu = c.upper() if c else ''
+        if 'FECHA' in cu and ('INGRESO' in cu or 'RETIRO' in cu):
+            fecha_nov_col = c
+            break
+    if not fecha_nov_col:
+        fecha_nov_col = _find_column(cols, ['NOVEDAD', 'INGRESO', 'RETIRO', 'EGRESO', 'FECHA'])
+
+    if not id_col or not name_col:
+        return []
+
+    recs: List[Dict[str, Any]] = []
+    for _, row in df.iterrows():
+        n_id = clean_id(row.get(id_col))
+        if not n_id or n_id == 'NAN':
+            continue
+        apellidos, nombres = split_name(row.get(name_col))
+        lookup = id_lookup.get(n_id, {})
+
+        fecha_nac = row.get(fecha_nac_col) if fecha_nac_col else None
+        try:
+            if pd.isna(fecha_nac):
+                fecha_nac = lookup.get('FECHA_NACIMIENTO_ASEGURADO')
+        except (TypeError, ValueError):
+            pass
+
+        fecha_nov = _format_date(row.get(fecha_nov_col)) if fecha_nov_col else ''
+        tipo = 'Ingreso' if is_ingreso else 'Retiro'
+
+        key = (n_id, tipo, fecha_nov)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        recs.append({
+            'NUMERO_POLIZA': config.NUMERO_POLIZA,
+            'APELLIDOS_ASEGURADO': apellidos,
+            'NOMBRES_ASEGURADO': nombres,
+            'TIPO_IDENTIFICACION_ASEGURADO': 'CC',
+            'NUMERO_IDENTIFICACION_ASEGURADO': n_id,
+            'CARGO': config.CARGO_DEFAULT if is_ingreso else lookup.get('CARGO'),
+            'GENERO': _normalize_genero(lookup.get('GENERO')),
+            'FECHA_NACIMIENTO_ASEGURADO': _format_date(fecha_nac),
+            'VALOR_ASEGURADO_MUERTE': lookup.get('VALOR_ASEGURADO_MUERTE', 5000000),
+            'TIPO_NOVEDAD': tipo,
+            'FECHA_NOVEDAD': fecha_nov,
+        })
+    return recs
+
+
+def _normalize_generated_row(row, is_ingreso: bool,
+                             id_lookup: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Map a row from a PlantillaCargue-format file to a normalized record."""
+    n_id = clean_id(row.get('NUMERO_IDENTIFICACION_ASEGURADO'))
+    if not n_id or n_id == 'NAN':
+        return None
+    lookup = id_lookup.get(n_id, {})
+
+    genero = _normalize_genero(row.get('GENERO')) or _normalize_genero(lookup.get('GENERO'))
+
+    cargo = row.get('CARGO')
+    if cargo is None or (isinstance(cargo, float) and cargo != cargo) or not str(cargo).strip() or str(cargo).lower() == 'nan':
+        cargo = config.CARGO_DEFAULT if is_ingreso else lookup.get('CARGO')
+
+    valor = row.get('VALOR_ASEGURADO_MUERTE')
+    try:
+        if pd.isna(valor):
+            valor = lookup.get('VALOR_ASEGURADO_MUERTE', 5000000)
+    except (TypeError, ValueError):
+        pass
+
+    fecha_nac = row.get('FECHA_NACIMIENTO_ASEGURADO')
+    try:
+        if pd.isna(fecha_nac):
+            fecha_nac = lookup.get('FECHA_NACIMIENTO_ASEGURADO')
+    except (TypeError, ValueError):
+        pass
+
+    return {
+        'NUMERO_POLIZA': config.NUMERO_POLIZA,
+        'APELLIDOS_ASEGURADO': row.get('APELLIDOS_ASEGURADO'),
+        'NOMBRES_ASEGURADO': row.get('NOMBRES_ASEGURADO'),
+        'TIPO_IDENTIFICACION_ASEGURADO': 'CC',
+        'NUMERO_IDENTIFICACION_ASEGURADO': n_id,
+        'CARGO': cargo,
+        'GENERO': genero,
+        'FECHA_NACIMIENTO_ASEGURADO': _format_date(fecha_nac),
+        'VALOR_ASEGURADO_MUERTE': valor,
+        'TIPO_NOVEDAD': 'Ingreso' if is_ingreso else 'Retiro',
+        'FECHA_NOVEDAD': _format_date(row.get('FECHA_NOVEDAD')),
+    }
 
 
 def _classify(value: Any) -> Optional[str]:
@@ -231,29 +319,3 @@ def _classify(value: Any) -> Optional[str]:
     if s.startswith('retir') or s.startswith('egres'):
         return 'egreso'
     return None
-
-
-def _clean(val: Any) -> Any:
-    """Return None for null-like values so Excel cells stay blank."""
-    if val is None:
-        return None
-    try:
-        if pd.isna(val):
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(val, str):
-        s = val.strip()
-        if s.lower() in ('nan', 'nat', 'none', ''):
-            return None
-        return s
-    return val
-
-
-def _is_empty(val: Any) -> bool:
-    try:
-        if pd.isna(val):
-            return True
-    except (TypeError, ValueError):
-        pass
-    return str(val).strip() == '' or str(val).strip().lower() == 'nan'

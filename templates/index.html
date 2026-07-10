@@ -48,6 +48,10 @@
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                 <span>Reportes</span>
             </button>
+            <button class="tab-btn" data-tab="split-tab">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                <span>Dividir Ingresos y Egresos</span>
+            </button>
         </nav>
 
         <!-- Content Area -->
@@ -445,6 +449,82 @@
                     </div>
                 </div>
             </section>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- Split Tab (independent module)                             -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <section id="split-tab" class="tab-content animate-fade-in">
+                <div class="dashboard-grid">
+                    <!-- Left: Upload & Action -->
+                    <div class="card glass-card upload-section">
+                        <h2 class="card-title">Dividir Ingresos y Egresos</h2>
+                        <p class="card-subtitle">Carga uno o varios archivos. El sistema separa los ingresos y egresos en archivos de máximo 20 personas cada uno.</p>
+
+                        <div class="upload-zone" id="split-dropzone" title="Arrastra aquí o haz clic para seleccionar múltiples archivos">
+                            <input type="file" id="split_files" accept=".xlsx" multiple class="file-input">
+                            <div class="upload-inner">
+                                <div class="upload-icon">🗂️</div>
+                                <h3>Archivos a Dividir</h3>
+                                <p class="file-name-label">Arrastra o haz clic para subir uno o más archivos</p>
+                                <p class="file-hint">(Formato: .xlsx - Puedes seleccionar múltiples)</p>
+                                <div class="selected-files-list hidden" id="split-files-list"></div>
+                            </div>
+                        </div>
+
+                        <button type="button" class="btn btn-primary" id="btn-split" disabled>
+                            <span class="btn-text">Procesar División</span>
+                            <span class="spinner hidden" id="split-spinner"></span>
+                        </button>
+                    </div>
+
+                    <!-- Right: Results -->
+                    <div class="card glass-card results-section">
+                        <h2 class="card-title">Resultado de la División</h2>
+
+                        <!-- Idle -->
+                        <div id="split-idle">
+                            <div class="empty-message">
+                                <div class="empty-icon">🧩</div>
+                                <p>Carga archivos y presiona "Procesar División" para generar los bloques de 20.</p>
+                            </div>
+                        </div>
+
+                        <!-- Loading -->
+                        <div id="split-loading" style="display:none; text-align:center; padding:2rem;">
+                            <div class="spinner" style="margin:0 auto 1rem;"></div>
+                            <p style="color:#a6adc8;">Dividiendo registros en bloques de 20…</p>
+                        </div>
+
+                        <!-- Success -->
+                        <div id="split-success" style="display:none;">
+                            <div class="stats-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+                                <div class="stat-card" style="background:#313244; border-radius:0.75rem; padding:1rem; text-align:center;">
+                                    <div style="font-size:1.8rem; font-weight:700; color:#a6e3a1;" id="split-total-ingresos">0</div>
+                                    <div style="font-size:0.8rem; color:#a6adc8;">Ingresos encontrados</div>
+                                </div>
+                                <div class="stat-card" style="background:#313244; border-radius:0.75rem; padding:1rem; text-align:center;">
+                                    <div style="font-size:1.8rem; font-weight:700; color:#f38ba8;" id="split-total-egresos">0</div>
+                                    <div style="font-size:0.8rem; color:#a6adc8;">Egresos encontrados</div>
+                                </div>
+                                <div class="stat-card" style="background:#313244; border-radius:0.75rem; padding:1rem; text-align:center;">
+                                    <div style="font-size:1.8rem; font-weight:700; color:#89b4fa;" id="split-files-ingresos">0</div>
+                                    <div style="font-size:0.8rem; color:#a6adc8;">Archivos de ingresos</div>
+                                </div>
+                                <div class="stat-card" style="background:#313244; border-radius:0.75rem; padding:1rem; text-align:center;">
+                                    <div style="font-size:1.8rem; font-weight:700; color:#fab387;" id="split-files-egresos">0</div>
+                                    <div style="font-size:0.8rem; color:#a6adc8;">Archivos de egresos</div>
+                                </div>
+                            </div>
+
+                            <a id="split-download-zip" href="#" class="btn btn-primary" style="width:100%; text-align:center; margin-bottom:1rem;">
+                                📦 Descargar Todos (ZIP)
+                            </a>
+
+                            <div id="split-file-list" style="max-height:260px; overflow-y:auto; font-size:0.85rem;"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
         
         <!-- Footer -->
@@ -522,5 +602,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/app.js?v=6"></script>
+    <script src="/static/js/splitter.js?v=1"></script>
 </body>
 </html>

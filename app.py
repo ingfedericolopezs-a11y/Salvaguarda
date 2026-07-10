@@ -24,6 +24,7 @@ from utils import (
 from utils.file_handler import create_run_directory, ensure_directories
 from utils.report_generator import ReportGenerator
 from utils.history_manager import HistoryManager
+from utils.splitter import split_ingresos_egresos  # Independent split module
 
 
 # Configure logging
@@ -43,6 +44,10 @@ app.config['MAX_CONTENT_LENGTH'] = config.MAX_FILE_SIZE
 
 # Ensure directories exist
 ensure_directories(config.UPLOAD_DIR, config.OUTPUT_DIR)
+
+# Independent module: output directory for the ingresos/egresos splitter
+SPLIT_DIR = os.path.join(config.OUTPUT_DIR, 'divisiones')
+os.makedirs(SPLIT_DIR, exist_ok=True)
 
 # Initialize report generator and history manager
 report_generator = ReportGenerator(config.OUTPUT_DIR)
@@ -199,6 +204,72 @@ def download_file(filename: str) -> Tuple[Any, int]:
         return jsonify({'error': 'Error accessing file'}), 500
     except Exception as e:
         logger.error(f"Unexpected error downloading file {filename}: {e}", exc_info=True)
+        return jsonify({'error': 'Error downloading file'}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  INDEPENDENT MODULE: Split ingresos/egresos into blocks of 20
+#  (Additive only — does not touch the monthly reconciliation flow.)
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/split', methods=['POST'])
+def split_files() -> Tuple[str, int]:
+    """Split uploaded files into ingresos/egresos blocks of 20 and bundle a ZIP."""
+    files = request.files.getlist('split_files')
+    if not files or (len(files) == 1 and files[0].filename == ''):
+        return jsonify({'error': 'Falta seleccionar los archivos a dividir.'}), 400
+
+    for f in files:
+        if f.filename != '':
+            is_valid, error_msg = validate_file(f)
+            if not is_valid:
+                return jsonify({'error': f'{f.filename}: {error_msg}'}), 400
+
+    try:
+        run_upload_dir = create_run_directory(config.UPLOAD_DIR)
+        saved_paths = []
+        for f in files:
+            if f.filename != '':
+                fpath = os.path.join(run_upload_dir, f.filename)
+                f.save(fpath)
+                saved_paths.append(fpath)
+
+        result = split_ingresos_egresos(saved_paths, SPLIT_DIR)
+
+        if result['status'] != 'success':
+            return jsonify({'error': result.get('error', 'Error al dividir archivos')}), 400
+
+        logger.info(f"Split done: {result['ingresos_files']} ingresos, "
+                    f"{result['egresos_files']} egresos files")
+
+        return jsonify({
+            'status': 'success',
+            'total_ingresos': result['total_ingresos'],
+            'total_egresos': result['total_egresos'],
+            'ingresos_files': result['ingresos_files'],
+            'egresos_files': result['egresos_files'],
+            'files': result['files'],
+            'zip_filename': result['zip_filename']
+        })
+    except RequestEntityTooLarge:
+        return jsonify({'error': 'Uno o más archivos es demasiado grande'}), 413
+    except Exception as e:
+        logger.error(f"Error in split_files: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/split/download/<path:filename>', methods=['GET'])
+def split_download(filename: str) -> Tuple[Any, int]:
+    """Download a generated ZIP (or single file) from the split output directory."""
+    try:
+        safe_name = os.path.basename(filename)
+        filepath = os.path.join(SPLIT_DIR, safe_name)
+        if not os.path.isfile(filepath):
+            return jsonify({'error': 'Archivo no encontrado'}), 404
+        mimetype = 'application/zip' if safe_name.lower().endswith('.zip') else EXCEL_MIMETYPE
+        return send_file(filepath, mimetype=mimetype, as_attachment=True, download_name=safe_name)
+    except Exception as e:
+        logger.error(f"Error downloading split file {filename}: {e}", exc_info=True)
         return jsonify({'error': 'Error downloading file'}), 500
 
 

@@ -25,6 +25,7 @@ from utils.file_handler import create_run_directory, ensure_directories
 from utils.report_generator import ReportGenerator
 from utils.history_manager import HistoryManager
 from utils.splitter import analyze_files, generate_split_files  # Independent split module
+from utils.batch_cobro import analyze_batch, generate_batch      # Independent batch-cobro module
 
 
 # Configure logging
@@ -51,6 +52,11 @@ os.makedirs(SPLIT_DIR, exist_ok=True)
 
 # In-memory state for the split module's two-step flow (analyze -> finalize)
 last_split_data: Dict[str, Any] = {'ingreso_records': [], 'egreso_records': []}
+
+# Independent module: output directory + state for the batch-cobro (varios meses)
+BATCH_DIR = os.path.join(config.OUTPUT_DIR, 'cuentas_cobro')
+os.makedirs(BATCH_DIR, exist_ok=True)
+last_batch_data: Dict[str, Any] = {'base_records': [], 'ingreso_records': [], 'egreso_records': []}
 
 # Initialize report generator and history manager
 report_generator = ReportGenerator(config.OUTPUT_DIR)
@@ -311,6 +317,122 @@ def split_download(filename: str) -> Tuple[Any, int]:
         return send_file(filepath, mimetype=mimetype, as_attachment=True, download_name=safe_name)
     except Exception as e:
         logger.error(f"Error downloading split file {filename}: {e}", exc_info=True)
+        return jsonify({'error': 'Error downloading file'}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  INDEPENDENT MODULE: Batch cobro — one plantilla per month in a range
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/batch-cobro', methods=['POST'])
+def batch_cobro_analyze() -> Tuple[str, int]:
+    """Step 1: read master + movements, classify, ask gender for ingresos."""
+    files = request.files.getlist('batch_files')
+    if not files or (len(files) == 1 and files[0].filename == ''):
+        return jsonify({'error': 'Falta seleccionar los archivos de movimientos.'}), 400
+
+    for f in files:
+        if f.filename != '':
+            ok, msg = validate_file(f)
+            if not ok:
+                return jsonify({'error': f'{f.filename}: {msg}'}), 400
+
+    master_file = request.files.get('batch_master')
+    if master_file is not None and master_file.filename != '':
+        ok, msg = validate_file(master_file)
+        if not ok:
+            return jsonify({'error': f'Archivo madre: {msg}'}), 400
+
+    try:
+        run_upload_dir = create_run_directory(config.UPLOAD_DIR)
+
+        master_path = None
+        if master_file is not None and master_file.filename != '':
+            master_path = os.path.join(run_upload_dir, master_file.filename)
+            master_file.save(master_path)
+
+        saved_paths = []
+        for f in files:
+            if f.filename != '':
+                fpath = os.path.join(run_upload_dir, f.filename)
+                f.save(fpath)
+                saved_paths.append(fpath)
+
+        result = analyze_batch(master_path, saved_paths)
+        if result['status'] != 'success':
+            return jsonify({'error': result.get('error', 'Error al analizar')}), 400
+
+        last_batch_data['base_records'] = result['base_records']
+        last_batch_data['ingreso_records'] = result['ingreso_records']
+        last_batch_data['egreso_records'] = result['egreso_records']
+
+        return jsonify({
+            'status': 'success',
+            'total_base': len(result['base_records']),
+            'total_ingresos': len(result['ingreso_records']),
+            'total_egresos': len(result['egreso_records']),
+            'ingresos_para_genero': result['ingresos_para_genero']
+        })
+    except RequestEntityTooLarge:
+        return jsonify({'error': 'Uno o más archivos es demasiado grande'}), 413
+    except Exception as e:
+        logger.error(f"Error in batch_cobro_analyze: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/batch-cobro/finalize', methods=['POST'])
+def batch_cobro_finalize() -> Tuple[str, int]:
+    """Step 2: apply gender and generate one cobro plantilla per month."""
+    if not last_batch_data['base_records'] and not last_batch_data['ingreso_records']:
+        return jsonify({'error': 'No hay datos analizados. Procesa los archivos primero.'}), 400
+
+    try:
+        data = request.get_json(force=True) or {}
+        gender_updates = {item['id']: item['genero'] for item in data.get('gender_updates', [])}
+
+        try:
+            start_mes = int(data.get('start_mes'))
+            start_anio = int(data.get('start_anio'))
+            end_mes = int(data.get('end_mes'))
+            end_anio = int(data.get('end_anio'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Debes indicar el mes/año inicial y final.'}), 400
+
+        base = [dict(r) for r in last_batch_data['base_records']]
+        ingresos = [dict(r) for r in last_batch_data['ingreso_records']]
+        egresos = [dict(r) for r in last_batch_data['egreso_records']]
+
+        # Apply gender to ingresos and matching base records
+        for coll in (ingresos, base):
+            for r in coll:
+                nid = str(r.get('NUMERO_IDENTIFICACION_ASEGURADO', ''))
+                if nid in gender_updates and gender_updates[nid]:
+                    r['GENERO'] = gender_updates[nid]
+
+        result = generate_batch(base, ingresos, egresos,
+                                start_mes, start_anio, end_mes, end_anio, BATCH_DIR)
+        if result['status'] != 'success':
+            return jsonify({'error': result.get('error', 'Error al generar')}), 400
+
+        logger.info(f"Batch cobro: {result['meses_generados']} meses generados")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in batch_cobro_finalize: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/batch-cobro/download/<path:filename>', methods=['GET'])
+def batch_cobro_download(filename: str) -> Tuple[Any, int]:
+    """Download a generated cobro plantilla or the ZIP."""
+    try:
+        safe_name = os.path.basename(filename)
+        filepath = os.path.join(BATCH_DIR, safe_name)
+        if not os.path.isfile(filepath):
+            return jsonify({'error': 'Archivo no encontrado'}), 404
+        mimetype = 'application/zip' if safe_name.lower().endswith('.zip') else EXCEL_MIMETYPE
+        return send_file(filepath, mimetype=mimetype, as_attachment=True, download_name=safe_name)
+    except Exception as e:
+        logger.error(f"Error downloading batch file {filename}: {e}", exc_info=True)
         return jsonify({'error': 'Error downloading file'}), 500
 
 

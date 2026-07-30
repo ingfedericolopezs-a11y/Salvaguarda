@@ -52,6 +52,10 @@
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                 <span>Dividir Ingresos y Egresos</span>
             </button>
+            <button class="tab-btn" data-tab="batch-tab">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                <span>Cuentas de Cobro (Meses)</span>
+            </button>
         </nav>
 
         <!-- Content Area -->
@@ -537,6 +541,90 @@
                     </div>
                 </div>
             </section>
+
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <!-- Batch Cobro Tab (independent module)                       -->
+            <!-- ══════════════════════════════════════════════════════════ -->
+            <section id="batch-tab" class="tab-content animate-fade-in">
+                <div class="dashboard-grid">
+                    <!-- Left: Upload & Range -->
+                    <div class="card glass-card upload-section">
+                        <h2 class="card-title">Cuentas de Cobro por Meses</h2>
+                        <p class="card-subtitle">Sube el archivo madre y los movimientos una sola vez. El sistema genera una cuenta de cobro por cada mes del rango, cada una fechada el 26 del mes anterior.</p>
+
+                        <!-- Master -->
+                        <div class="upload-zone" id="batch-master-dropzone" title="Arrastra aquí o haz clic" style="border-color:#94e2d5;">
+                            <input type="file" id="batch_master" accept=".xlsx" class="file-input">
+                            <div class="upload-inner">
+                                <div class="upload-icon">📊</div>
+                                <h3>Archivo Madre / Estado Actual <span style="font-size:0.75rem; color:#94e2d5;">(Recomendado)</span></h3>
+                                <p class="file-name-label">Arrastra o haz clic para subir</p>
+                                <p class="file-hint">(PLANTILLA CARGUE COBRO - Formato: .xlsx)</p>
+                                <span class="file-size-badge hidden" id="batch-master-size"></span>
+                            </div>
+                        </div>
+
+                        <!-- Movements -->
+                        <div class="upload-zone" id="batch-dropzone" title="Arrastra aquí o haz clic para seleccionar múltiples archivos">
+                            <input type="file" id="batch_files" accept=".xlsx" multiple class="file-input">
+                            <div class="upload-inner">
+                                <div class="upload-icon">🔄</div>
+                                <h3>Archivos de Movimientos</h3>
+                                <p class="file-name-label">Arrastra o haz clic para subir uno o más archivos</p>
+                                <p class="file-hint">(Formato: .xlsx - Puedes seleccionar múltiples)</p>
+                                <div class="selected-files-list hidden" id="batch-files-list"></div>
+                            </div>
+                        </div>
+
+                        <!-- Month range -->
+                        <div style="display:flex; gap:1rem; margin:1rem 0;">
+                            <div style="flex:1;">
+                                <label style="display:block; color:#a6adc8; font-size:0.8rem; margin-bottom:0.4rem;">Desde (mes/año)</label>
+                                <div style="display:flex; gap:0.5rem;">
+                                    <select id="batch-start-mes" style="flex:2; padding:0.55rem; border-radius:0.5rem; border:1px solid #45475a; background:#313244; color:#cdd6f4;"></select>
+                                    <input id="batch-start-anio" type="number" min="2020" max="2099" style="flex:1; padding:0.55rem; border-radius:0.5rem; border:1px solid #45475a; background:#313244; color:#cdd6f4; box-sizing:border-box; width:100%;">
+                                </div>
+                            </div>
+                            <div style="flex:1;">
+                                <label style="display:block; color:#a6adc8; font-size:0.8rem; margin-bottom:0.4rem;">Hasta (mes/año)</label>
+                                <div style="display:flex; gap:0.5rem;">
+                                    <select id="batch-end-mes" style="flex:2; padding:0.55rem; border-radius:0.5rem; border:1px solid #45475a; background:#313244; color:#cdd6f4;"></select>
+                                    <input id="batch-end-anio" type="number" min="2020" max="2099" style="flex:1; padding:0.55rem; border-radius:0.5rem; border:1px solid #45475a; background:#313244; color:#cdd6f4; box-sizing:border-box; width:100%;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="button" class="btn btn-primary" id="btn-batch" disabled>
+                            <span class="btn-text">Generar Cuentas de Cobro</span>
+                            <span class="spinner hidden" id="batch-spinner"></span>
+                        </button>
+                    </div>
+
+                    <!-- Right: Results -->
+                    <div class="card glass-card results-section">
+                        <h2 class="card-title">Cuentas Generadas</h2>
+
+                        <div id="batch-idle">
+                            <div class="empty-message">
+                                <div class="empty-icon">📅</div>
+                                <p>Carga los archivos, elige el rango de meses y presiona "Generar Cuentas de Cobro".</p>
+                            </div>
+                        </div>
+
+                        <div id="batch-loading" style="display:none; text-align:center; padding:2rem;">
+                            <div class="spinner" style="margin:0 auto 1rem;"></div>
+                            <p style="color:#a6adc8;">Generando cuentas de cobro por mes…</p>
+                        </div>
+
+                        <div id="batch-success" style="display:none;">
+                            <a id="batch-download-zip" href="#" class="btn btn-primary" style="width:100%; text-align:center; margin-bottom:1rem;">
+                                📦 Descargar Todas (ZIP)
+                            </a>
+                            <div id="batch-file-list" style="max-height:340px; overflow-y:auto; font-size:0.85rem;"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
         
         <!-- Footer -->
@@ -545,6 +633,31 @@
             <p>Versión 1.0 (Automated Quoting System & Conciliación)</p>
         </footer>
     </div>
+    <!-- Modal: Confirmar género de ingresos (módulo Cuentas de Cobro) -->
+    <div id="batch-genero-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; align-items:flex-start; justify-content:center; overflow-y:auto; padding:2rem 1rem;">
+        <div style="background:#1e1e2e; border:1px solid #313244; border-radius:1rem; padding:2rem; width:700px; max-width:95vw; box-shadow:0 24px 64px rgba(0,0,0,0.6); margin:auto;">
+            <h2 style="margin:0 0 0.4rem; color:#cdd6f4; font-size:1.2rem;">Confirmar Género — Nuevos Ingresos</h2>
+            <p style="color:#6c7086; font-size:0.875rem; margin:0 0 1.25rem;">Selecciona el género de cada persona que ingresa antes de generar las cuentas de cobro.</p>
+            <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+                    <thead>
+                        <tr style="border-bottom:1px solid #313244;">
+                            <th style="text-align:left; padding:0.6rem 0.75rem; color:#89b4fa; font-weight:600;">Cédula</th>
+                            <th style="text-align:left; padding:0.6rem 0.75rem; color:#89b4fa; font-weight:600;">Apellidos</th>
+                            <th style="text-align:left; padding:0.6rem 0.75rem; color:#89b4fa; font-weight:600;">Nombres</th>
+                            <th style="text-align:center; padding:0.6rem 0.75rem; color:#89b4fa; font-weight:600;">Género</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batch-genero-tbody"></tbody>
+                </table>
+            </div>
+            <div style="display:flex; gap:0.75rem; margin-top:1.5rem;">
+                <button id="batch-genero-confirm" style="flex:1; padding:0.75rem; border-radius:0.5rem; border:none; background:linear-gradient(135deg,#a6e3a1,#94e2d5); color:#1e1e2e; font-weight:700; cursor:pointer; font-size:0.95rem;">Confirmar y Generar Cuentas</button>
+            </div>
+            <p id="batch-genero-error" style="color:#f38ba8; font-size:0.85rem; margin-top:0.75rem; display:none;"></p>
+        </div>
+    </div>
+
     <!-- Modal: Confirmar género de ingresos (módulo Dividir) -->
     <div id="split-genero-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; align-items:flex-start; justify-content:center; overflow-y:auto; padding:2rem 1rem;">
         <div style="background:#1e1e2e; border:1px solid #313244; border-radius:1rem; padding:2rem; width:700px; max-width:95vw; box-shadow:0 24px 64px rgba(0,0,0,0.6); margin:auto;">
@@ -640,5 +753,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/app.js?v=6"></script>
     <script src="/static/js/splitter.js?v=2"></script>
+    <script src="/static/js/batch_cobro.js?v=1"></script>
 </body>
 </html>

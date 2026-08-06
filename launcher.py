@@ -47,4 +47,17 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as exc:
+        # Keep the window open so the user can read the error on other PCs
+        import traceback
+        print('\n' + '=' * 60)
+        print('  OCURRIO UN ERROR AL INICIAR:')
+        print('=' * 60)
+        traceback.print_exc()
+        print('\nToma una foto de este mensaje y compartela para revisarlo.')
+        try:
+            input('\nPresiona ENTER para cerrar...')
+        except Exception:
+            time.sleep(60)

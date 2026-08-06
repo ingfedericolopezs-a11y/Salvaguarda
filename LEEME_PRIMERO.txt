@@ -2,33 +2,52 @@
    ROESAN - SALVAGUARDAR  (Version de Escritorio)
 ========================================================
 
-COMO USAR (funciona en cualquier computador con Windows,
-NO necesita instalar Python ni nada):
+FUNCIONA EN CUALQUIER COMPUTADOR CON WINDOWS 10 u 11
+(64 bits). NO necesita instalar Python ni nada.
 
-1. Descomprime esta carpeta ZIP en cualquier lugar
-   (Escritorio, Documentos, una USB, etc.)
+--------------------------------------------------------
+COMO USAR
+--------------------------------------------------------
+1. Descomprime (extrae) TODO el ZIP en una carpeta.
+   IMPORTANTE: extrae la carpeta COMPLETA, no ejecutes
+   el programa desde dentro del ZIP.
 
-2. Haz doble clic en:   ROESAN-SALVAGUARDAR.exe
+2. Entra a la carpeta "ROESAN-SALVAGUARDAR".
 
-3. Se abrira una ventana negra (NO la cierres) y
-   automaticamente se abrira la aplicacion en tu
-   navegador (Chrome, Edge, etc.).
+3. Haz doble clic en:   ROESAN-SALVAGUARDAR.exe
 
-   Si no se abre solo, abre tu navegador y entra a:
+4. Se abrira una ventana negra (NO la cierres) y la
+   aplicacion se abrira sola en tu navegador.
+
+   Si no se abre sola, abre Chrome o Edge y entra a:
    http://127.0.0.1:5000
 
-4. Para cerrar la aplicacion: cierra la ventana negra.
+5. Para cerrar la aplicacion: cierra la ventana negra.
 
 --------------------------------------------------------
-NOTAS
+SI WINDOWS MUESTRA UN AVISO DE SEGURIDAD
 --------------------------------------------------------
-- La primera vez Windows puede mostrar un aviso de
-  seguridad ("Windows protegio tu PC"). Haz clic en
-  "Mas informacion" y luego "Ejecutar de todas formas".
+Al abrir por primera vez puede aparecer:
+   "Windows protegio tu PC"
+Haz clic en "Mas informacion" y luego en
+"Ejecutar de todas formas". Es normal.
 
-- Los archivos que generes se guardan en la carpeta
-  "outputs" que aparece junto al programa.
+--------------------------------------------------------
+SI EL ANTIVIRUS LO BLOQUEA
+--------------------------------------------------------
+Algunos antivirus bloquean programas nuevos. Permite o
+agrega una excepcion para ROESAN-SALVAGUARDAR.exe
 
-- Puedes copiar todo el ZIP a otro computador y funciona
-  igual, sin instalar nada.
+--------------------------------------------------------
+IMPORTANTE
+--------------------------------------------------------
+- NO separes el archivo .exe de la carpeta "_internal".
+  Deben ir siempre juntos en la misma carpeta.
+- Puedes copiar toda la carpeta a otro computador o a
+  una USB y funciona igual.
+- Los archivos que generes quedan en la carpeta "outputs"
+  que aparece junto al programa.
+
+Si algo falla, la ventana negra mostrara el error:
+toma una foto y compartela para revisarlo.
 ========================================================

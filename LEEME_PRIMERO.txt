@@ -1,53 +1,63 @@
-========================================================
+============================================================
    ROESAN - SALVAGUARDAR  (Version de Escritorio)
-========================================================
+============================================================
 
-FUNCIONA EN CUALQUIER COMPUTADOR CON WINDOWS 10 u 11
-(64 bits). NO necesita instalar Python ni nada.
+*** IMPORTANTE: LEER ESTO PRIMERO ***
 
---------------------------------------------------------
-COMO USAR
---------------------------------------------------------
-1. Descomprime (extrae) TODO el ZIP en una carpeta.
-   IMPORTANTE: extrae la carpeta COMPLETA, no ejecutes
-   el programa desde dentro del ZIP.
+Windows 11 bloquea los programas que no tienen "firma digital"
+(como este). NO es un virus ni un error del programa: es la
+seguridad de Windows. Por eso a veces la ventana se abre y se
+cierra sola sin dejar leer nada.
 
-2. Entra a la carpeta "ROESAN-SALVAGUARDAR".
+Para que funcione hay que decirle a Windows que confie en el
+programa. Sigue estos pasos UNA sola vez:
 
-3. Haz doble clic en:   ROESAN-SALVAGUARDAR.exe
+------------------------------------------------------------
+PASO 1 - DESBLOQUEAR EL ZIP (antes de extraer)
+------------------------------------------------------------
+1. Clic DERECHO sobre el archivo ZIP.
+2. "Propiedades".
+3. Abajo, si aparece la casilla "Desbloquear" (Unblock),
+   MARCALA.
+4. "Aplicar" y "Aceptar".
+5. Ahora si, extrae (descomprime) el ZIP.
 
-4. Se abrira una ventana negra (NO la cierres) y la
-   aplicacion se abrira sola en tu navegador.
+------------------------------------------------------------
+PASO 2 - ABRIR EL PROGRAMA
+------------------------------------------------------------
+1. Entra a la carpeta "ROESAN-SALVAGUARDAR".
+2. Doble clic en:  ROESAN-SALVAGUARDAR.exe
+   (o en el archivo "INICIAR ROESAN.bat")
 
-   Si no se abre sola, abre Chrome o Edge y entra a:
-   http://127.0.0.1:5000
+------------------------------------------------------------
+PASO 3 - SI APARECE "Windows protegio tu PC" (azul)
+------------------------------------------------------------
+1. Clic en "Mas informacion".
+2. Clic en "Ejecutar de todas formas".
 
-5. Para cerrar la aplicacion: cierra la ventana negra.
+------------------------------------------------------------
+PASO 4 - SI AUN NO ABRE (Smart App Control activo)
+------------------------------------------------------------
+Windows 11 nuevo trae "Smart App Control" muy estricto.
+Para desactivarlo:
+1. Inicio > Configuracion.
+2. Privacidad y seguridad > Seguridad de Windows.
+3. "Control de aplicaciones y navegador".
+4. "Configuracion de Control de aplicaciones inteligente".
+5. Cambiar a "Desactivado".
+(Es una funcion de seguridad; se puede desactivar sin problema
+ para poder usar programas propios como este.)
 
---------------------------------------------------------
-SI WINDOWS MUESTRA UN AVISO DE SEGURIDAD
---------------------------------------------------------
-Al abrir por primera vez puede aparecer:
-   "Windows protegio tu PC"
-Haz clic en "Mas informacion" y luego en
-"Ejecutar de todas formas". Es normal.
+------------------------------------------------------------
+SI ALGO FALLA
+------------------------------------------------------------
+Busca el archivo "ERROR_ROESAN.txt" dentro de la carpeta
+ROESAN-SALVAGUARDAR y enviamelo. Ahi queda escrito el error.
 
---------------------------------------------------------
-SI EL ANTIVIRUS LO BLOQUEA
---------------------------------------------------------
-Algunos antivirus bloquean programas nuevos. Permite o
-agrega una excepcion para ROESAN-SALVAGUARDAR.exe
-
---------------------------------------------------------
-IMPORTANTE
---------------------------------------------------------
-- NO separes el archivo .exe de la carpeta "_internal".
-  Deben ir siempre juntos en la misma carpeta.
-- Puedes copiar toda la carpeta a otro computador o a
-  una USB y funciona igual.
-- Los archivos que generes quedan en la carpeta "outputs"
-  que aparece junto al programa.
-
-Si algo falla, la ventana negra mostrara el error:
-toma una foto y compartela para revisarlo.
-========================================================
+------------------------------------------------------------
+NOTAS
+------------------------------------------------------------
+- No separes el .exe de la carpeta "_internal": van juntos.
+- Los archivos con contrasena se abren automaticamente.
+- Lee formatos: .xlsx, .xls, .xlsm, .xlsb y formato Allianz.
+============================================================

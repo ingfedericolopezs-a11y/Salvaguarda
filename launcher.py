@@ -1,63 +1,76 @@
 """
 Standalone launcher for ROESAN-SALVAGUARDAR.
 
-When packaged with PyInstaller this is the entry point: it starts the Flask
-server and opens the default browser automatically. No Python installation
-needed on the target computer.
+Starts the Flask server and opens the browser automatically. Any startup
+error is written to ERROR_ROESAN.txt next to the program so it can be shared
+even if the console window closes.
 """
 
 import os
 import sys
 import time
 import threading
-import webbrowser
-
-# Ensure the bundled package root is importable when frozen
-if getattr(sys, 'frozen', False):
-    sys.path.insert(0, getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)))
-
-from app import app  # noqa: E402
+import traceback
 
 HOST = '127.0.0.1'
 PORT = 5000
 URL = f'http://{HOST}:{PORT}/'
 
 
-def _open_browser():
-    time.sleep(1.8)
+def _base_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _write_error(text: str) -> None:
     try:
+        with open(os.path.join(_base_dir(), 'ERROR_ROESAN.txt'), 'w', encoding='utf-8') as f:
+            f.write(text)
+    except Exception:
+        pass
+
+
+def _open_browser():
+    time.sleep(2.0)
+    try:
+        import webbrowser
         webbrowser.open(URL)
     except Exception:
         pass
 
 
 def main():
+    # Make bundled package importable when frozen
+    if getattr(sys, 'frozen', False):
+        sys.path.insert(0, getattr(sys, '_MEIPASS', os.path.dirname(sys.executable)))
+
     print('=' * 60)
     print('  ROESAN - SALVAGUARDAR')
-    print('  Servidor iniciando...')
-    print(f'  Abre tu navegador en: {URL}')
-    print('  (Esta ventana debe permanecer abierta mientras uses la app)')
-    print('  Para cerrar la aplicacion, cierra esta ventana.')
+    print('  Iniciando... abre tu navegador en: ' + URL)
+    print('  (No cierres esta ventana mientras uses la app)')
     print('=' * 60)
 
-    threading.Thread(target=_open_browser, daemon=True).start()
+    # Import the app here so import errors are captured too
+    from app import app
 
-    # Use Flask's built-in server; threaded so multiple requests work
+    threading.Thread(target=_open_browser, daemon=True).start()
     app.run(host=HOST, port=PORT, debug=False, threaded=True, use_reloader=False)
 
 
 if __name__ == '__main__':
     try:
         main()
-    except Exception as exc:
-        # Keep the window open so the user can read the error on other PCs
-        import traceback
+    except Exception:
+        tb = traceback.format_exc()
+        _write_error(tb)
         print('\n' + '=' * 60)
         print('  OCURRIO UN ERROR AL INICIAR:')
         print('=' * 60)
-        traceback.print_exc()
-        print('\nToma una foto de este mensaje y compartela para revisarlo.')
+        print(tb)
+        print('\nSe guardo el detalle en el archivo ERROR_ROESAN.txt')
+        print('(esta junto al programa). Enviame ese archivo para revisarlo.')
         try:
             input('\nPresiona ENTER para cerrar...')
         except Exception:
-            time.sleep(60)
+            time.sleep(120)

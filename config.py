@@ -34,7 +34,7 @@ WORKSPACE_DIR = os.getenv('WORKSPACE_DIR', DATA_DIR)
 
 # Security Configuration
 MAX_FILE_SIZE = int(os.getenv('MAX_FILE_SIZE', 10 * 1024 * 1024))  # 10 MB
-ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'xlsm', 'xlsb'}
 ALLOWED_MIMETYPES = {
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-excel'

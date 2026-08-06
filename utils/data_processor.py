@@ -6,6 +6,7 @@ the ROESAN-SALVAGUARDAR reconciliation application.
 """
 
 import os
+import io
 import shutil
 import pandas as pd
 import numpy as np
@@ -25,6 +26,7 @@ def process_excel_files(
     movement_paths: List[str],
     cobro_mes: int = 0,
     cobro_anio: int = 0,
+    password: Optional[str] = None,
     header_search_rows: int = 20
 ) -> Dict[str, Any]:
     """
@@ -60,7 +62,7 @@ def process_excel_files(
 
     # 1. Read Master Template
     try:
-        master_df: pd.DataFrame = _read_excel_safe(master_path)
+        master_df: pd.DataFrame = _read_excel_safe(master_path, password=password)
     except FileNotFoundError as e:
         raise FileNotFoundError(f'Master file not found: {master_path}')
     except pd.errors.ParserError as e:
@@ -89,7 +91,7 @@ def process_excel_files(
         fname = os.path.basename(fpath)
 
         try:
-            xl = _open_excel_any(fpath)
+            xl = _open_excel_any(fpath, password=password)
         except Exception as e:
             logs.append(f"[!] Error reading {fname}: {e}")
             continue
@@ -567,27 +569,92 @@ def _detect_engine(filepath: str) -> Optional[str]:
         return None
     if head[:4] == b'PK\x03\x04':            # ZIP -> modern .xlsx
         return 'openpyxl'
-    if head[:4] == b'\xd0\xcf\x11\xe0':      # OLE2 -> legacy .xls
+    if head[:4] == b'\xd0\xcf\x11\xe0':      # OLE2 -> legacy .xls OR encrypted
         return 'xlrd'
     return None                              # unknown -> maybe HTML/CSV
 
 
-def _open_excel_any(filepath: str) -> pd.ExcelFile:
-    """
-    Open a spreadsheet regardless of a wrong extension.
+# Passwords tried automatically for encrypted files (default/common ones)
+_COMMON_PASSWORDS = ['', 'VelvetSweatshop', '123456', '1234', 'password',
+                     'roesan', 'ROESAN', 'salvaguardar', '0000']
 
-    Handles: real .xlsx, real .xls, .xlsx renamed as .xls, and files whose
-    header is unknown (falls back to trying both engines).
+
+def _maybe_decrypt(filepath: str, password: Optional[str] = None):
     """
+    If the file is a password-protected Office file, decrypt it.
+
+    Returns:
+        - io.BytesIO of the decrypted .xlsx if decryption succeeded
+        - the string 'ENCRYPTED' if it is encrypted but we could not open it
+        - None if the file is not encrypted
+    """
+    try:
+        with open(filepath, 'rb') as f:
+            if f.read(4) != b'\xd0\xcf\x11\xe0':
+                return None  # not an OLE2 container -> not an encrypted package
+    except Exception:
+        return None
+
+    try:
+        import msoffcrypto
+    except ImportError:
+        return None
+
+    # Is it actually encrypted?
+    try:
+        with open(filepath, 'rb') as f:
+            if not msoffcrypto.OfficeFile(f).is_encrypted():
+                return None
+    except Exception:
+        return None
+
+    # Try the user-provided password first, then the common ones
+    candidates = ([password] if password else []) + _COMMON_PASSWORDS
+    for pwd in candidates:
+        try:
+            with open(filepath, 'rb') as f:
+                office = msoffcrypto.OfficeFile(f)
+                office.load_key(password=pwd)
+                out = io.BytesIO()
+                office.decrypt(out)
+                out.seek(0)
+                logger.info('Archivo encriptado abierto correctamente')
+                return out
+        except Exception:
+            continue
+
+    return 'ENCRYPTED'
+
+
+def _open_excel_any(filepath: str, password: Optional[str] = None) -> pd.ExcelFile:
+    """
+    Open a spreadsheet regardless of a wrong extension or password protection.
+
+    Handles: real .xlsx, real .xls, .xlsx renamed as .xls, binary .xlsb, and
+    password-protected files (auto-decrypts with common/default passwords).
+    """
+    # 1) Password-protected? Decrypt to memory first.
+    decrypted = _maybe_decrypt(filepath, password)
+    if decrypted == 'ENCRYPTED':
+        raise ValueError(
+            'El archivo esta protegido con contrasena y no se pudo abrir '
+            'automaticamente. Abrelo en Excel, quitale la contrasena '
+            '(Archivo > Informacion > Proteger libro > Cifrar con contrasena: '
+            'borra la contrasena y guarda) y vuelve a subirlo.'
+        )
+    if isinstance(decrypted, io.BytesIO):
+        return pd.ExcelFile(decrypted, engine='openpyxl')
+
+    # 2) Normal file: detect engine by content
     engine = _detect_engine(filepath)
     if engine:
         try:
             return pd.ExcelFile(filepath, engine=engine)
         except Exception:
             pass
-    # Fall back: try each engine in turn
+    # 3) Fall back: try every known engine (xlsx, xls, binary xlsb, auto)
     last_err: Optional[Exception] = None
-    for eng in ('openpyxl', 'xlrd', None):
+    for eng in ('openpyxl', 'xlrd', 'pyxlsb', None):
         try:
             return pd.ExcelFile(filepath, engine=eng) if eng else pd.ExcelFile(filepath)
         except Exception as e:
@@ -595,19 +662,21 @@ def _open_excel_any(filepath: str) -> pd.ExcelFile:
     raise ValueError(f'No se pudo abrir el archivo como Excel: {last_err}')
 
 
-def _read_excel_safe(filepath: str) -> pd.DataFrame:
+def _read_excel_safe(filepath: str, password: Optional[str] = None) -> pd.DataFrame:
     """
     Read a spreadsheet safely, detecting the real format by content.
 
-    Handles files with the wrong extension (e.g. .xlsx renamed to .xls) and
+    Handles wrong extensions, binary formats, password-protected files and
     HTML tables exported with an .xls name. Reads 'Sheet1' if present, else
     the last sheet.
     """
-    # First: content-aware Excel open
+    # First: content-aware Excel open (handles encryption via _open_excel_any)
     try:
-        xls = _open_excel_any(filepath)
+        xls = _open_excel_any(filepath, password=password)
         sheet = 'Sheet1' if 'Sheet1' in xls.sheet_names else xls.sheet_names[-1]
         return pd.read_excel(xls, sheet_name=sheet)
+    except ValueError:
+        raise  # clear Spanish message (e.g. password-protected) — surface as-is
     except Exception as excel_err:
         # Some systems export ".xls" that are really HTML tables
         try:

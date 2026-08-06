@@ -6,3 +6,5 @@ numpy>=1.24.0
 werkzeug>=3.0.0
 python-dotenv>=1.0.0
 lxml>=4.9.0
+pyxlsb>=1.0.10
+msoffcrypto-tool>=5.0.0

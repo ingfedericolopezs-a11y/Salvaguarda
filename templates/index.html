@@ -71,7 +71,7 @@
                         <form id="upload-form" enctype="multipart/form-data">
                             <!-- Uploader 1: Master File -->
                             <div class="upload-zone" id="master-dropzone" title="Arrastra aquí o haz clic para seleccionar">
-                                <input type="file" id="master_file" name="master_file" accept=".xlsx,.xls" class="file-input">
+                                <input type="file" id="master_file" name="master_file" accept=".xlsx,.xls,.xlsm,.xlsb" class="file-input">
                                 <div class="upload-inner">
                                     <div class="upload-icon">📊</div>
                                     <h3>Plantilla Maestro / Cobro Anterior</h3>
@@ -83,7 +83,7 @@
 
                             <!-- Uploader 2: Movements -->
                             <div class="upload-zone" id="movements-dropzone" title="Arrastra aquí o haz clic para seleccionar múltiples archivos">
-                                <input type="file" id="movement_files" name="movement_files" accept=".xlsx,.xls" multiple class="file-input">
+                                <input type="file" id="movement_files" name="movement_files" accept=".xlsx,.xls,.xlsm,.xlsb" multiple class="file-input">
                                 <div class="upload-inner">
                                     <div class="upload-icon">🔄</div>
                                     <h3>Archivos de Movimientos (Ingresos y Retiros)</h3>
@@ -95,7 +95,7 @@
 
                             <!-- Uploader 3: Pending movements from previous period (optional) -->
                             <div class="upload-zone" id="pending-dropzone" title="Arrastra aquí o haz clic para seleccionar" style="border-color: #f0c674;">
-                                <input type="file" id="pending_file" name="pending_file" accept=".xlsx,.xls" class="file-input">
+                                <input type="file" id="pending_file" name="pending_file" accept=".xlsx,.xls,.xlsm,.xlsb" class="file-input">
                                 <div class="upload-inner">
                                     <div class="upload-icon">📆</div>
                                     <h3>Movimientos Pendientes del Mes Anterior <span style="font-size:0.75rem; color:#f0c674;">(Opcional)</span></h3>
@@ -103,6 +103,12 @@
                                     <p class="file-hint">(MOVIMIENTOS_PARA_MES_SIGUIENTE... del periodo pasado - Formato: .xlsx)</p>
                                     <span class="file-size-badge hidden" id="pending-size"></span>
                                 </div>
+                            </div>
+
+                            <!-- Optional password for protected files -->
+                            <div style="margin: 0.5rem 0 1rem;">
+                                <label style="display:block; color:#a6adc8; font-size:0.8rem; margin-bottom:0.4rem;">🔒 Contraseña del archivo <span style="color:#6c7086;">(solo si tus archivos vienen protegidos)</span></label>
+                                <input type="password" id="file_password" name="file_password" placeholder="Déjalo vacío si no tienen contraseña" autocomplete="off" style="width:100%; padding:0.6rem; border-radius:0.5rem; border:1px solid #45475a; background:#313244; color:#cdd6f4; box-sizing:border-box;">
                             </div>
 
                             <!-- Run Button -->
@@ -466,7 +472,7 @@
 
                         <!-- Master file (state of who's currently insured) -->
                         <div class="upload-zone" id="split-master-dropzone" title="Arrastra aquí o haz clic para seleccionar" style="border-color:#94e2d5;">
-                            <input type="file" id="split_master" accept=".xlsx,.xls" class="file-input">
+                            <input type="file" id="split_master" accept=".xlsx,.xls,.xlsm,.xlsb" class="file-input">
                             <div class="upload-inner">
                                 <div class="upload-icon">📊</div>
                                 <h3>Archivo Madre / Estado Actual <span style="font-size:0.75rem; color:#94e2d5;">(Recomendado)</span></h3>
@@ -477,7 +483,7 @@
                         </div>
 
                         <div class="upload-zone" id="split-dropzone" title="Arrastra aquí o haz clic para seleccionar múltiples archivos">
-                            <input type="file" id="split_files" accept=".xlsx,.xls" multiple class="file-input">
+                            <input type="file" id="split_files" accept=".xlsx,.xls,.xlsm,.xlsb" multiple class="file-input">
                             <div class="upload-inner">
                                 <div class="upload-icon">🗂️</div>
                                 <h3>Archivos a Dividir</h3>
@@ -554,7 +560,7 @@
 
                         <!-- Master -->
                         <div class="upload-zone" id="batch-master-dropzone" title="Arrastra aquí o haz clic" style="border-color:#94e2d5;">
-                            <input type="file" id="batch_master" accept=".xlsx,.xls" class="file-input">
+                            <input type="file" id="batch_master" accept=".xlsx,.xls,.xlsm,.xlsb" class="file-input">
                             <div class="upload-inner">
                                 <div class="upload-icon">📊</div>
                                 <h3>Archivo Madre / Estado Actual <span style="font-size:0.75rem; color:#94e2d5;">(Recomendado)</span></h3>
@@ -566,7 +572,7 @@
 
                         <!-- Movements -->
                         <div class="upload-zone" id="batch-dropzone" title="Arrastra aquí o haz clic para seleccionar múltiples archivos">
-                            <input type="file" id="batch_files" accept=".xlsx,.xls" multiple class="file-input">
+                            <input type="file" id="batch_files" accept=".xlsx,.xls,.xlsm,.xlsb" multiple class="file-input">
                             <div class="upload-inner">
                                 <div class="upload-icon">🔄</div>
                                 <h3>Archivos de Movimientos</h3>

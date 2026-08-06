@@ -502,10 +502,14 @@ def process_files() -> Tuple[str, int]:
         cobro_mes  = int(request.form.get('cobro_mes',  0))
         cobro_anio = int(request.form.get('cobro_anio', 0))
 
+        # Optional password for protected/encrypted Excel files
+        file_password = request.form.get('file_password') or None
+
         # Process data
         logger.info("Starting data processing...")
         result = process_excel_files(master_path, saved_movement_paths,
-                                     cobro_mes=cobro_mes, cobro_anio=cobro_anio)
+                                     cobro_mes=cobro_mes, cobro_anio=cobro_anio,
+                                     password=file_password)
 
         if result['status'] != 'success':
             raise Exception(result.get('error', 'Unknown error'))

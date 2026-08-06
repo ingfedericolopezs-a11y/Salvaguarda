@@ -466,6 +466,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         formData.append('cobro_mes',  cobro.mes);
         formData.append('cobro_anio', cobro.anio);
+        const pwdEl = getElement('file_password');
+        if (pwdEl && pwdEl.value) formData.append('file_password', pwdEl.value);
 
         showState('loading');
         elements.previewSection.classList.add('hidden');

@@ -575,8 +575,8 @@ def _detect_engine(filepath: str) -> Optional[str]:
 
 
 # Passwords tried automatically for encrypted files (default/common ones)
-_COMMON_PASSWORDS = ['', 'VelvetSweatshop', '123456', '1234', 'password',
-                     'roesan', 'ROESAN', 'salvaguardar', '0000']
+_COMMON_PASSWORDS = ['BackColombiaQ3!', '', 'VelvetSweatshop', '123456', '1234',
+                     'password', 'roesan', 'ROESAN', 'salvaguardar', '0000']
 
 
 def _maybe_decrypt(filepath: str, password: Optional[str] = None):

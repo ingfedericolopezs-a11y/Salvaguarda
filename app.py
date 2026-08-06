@@ -39,8 +39,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Flask app initialization
-app = Flask(__name__, static_folder='static', template_folder='templates')
+# Flask app initialization (absolute paths so it works packaged too)
+app = Flask(
+    __name__,
+    static_folder=os.path.join(config.RESOURCE_DIR, 'static'),
+    template_folder=os.path.join(config.RESOURCE_DIR, 'templates')
+)
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_FILE_SIZE
 
 # Ensure directories exist

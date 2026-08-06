@@ -40,3 +40,13 @@ outputs/
 
 # Temporary files
 ~$*
+
+# Build artifacts
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+uploads/
+outputs/
+app.log

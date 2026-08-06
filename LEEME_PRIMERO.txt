@@ -1,0 +1,34 @@
+========================================================
+   ROESAN - SALVAGUARDAR  (Version de Escritorio)
+========================================================
+
+COMO USAR (funciona en cualquier computador con Windows,
+NO necesita instalar Python ni nada):
+
+1. Descomprime esta carpeta ZIP en cualquier lugar
+   (Escritorio, Documentos, una USB, etc.)
+
+2. Haz doble clic en:   ROESAN-SALVAGUARDAR.exe
+
+3. Se abrira una ventana negra (NO la cierres) y
+   automaticamente se abrira la aplicacion en tu
+   navegador (Chrome, Edge, etc.).
+
+   Si no se abre solo, abre tu navegador y entra a:
+   http://127.0.0.1:5000
+
+4. Para cerrar la aplicacion: cierra la ventana negra.
+
+--------------------------------------------------------
+NOTAS
+--------------------------------------------------------
+- La primera vez Windows puede mostrar un aviso de
+  seguridad ("Windows protegio tu PC"). Haz clic en
+  "Mas informacion" y luego "Ejecutar de todas formas".
+
+- Los archivos que generes se guardan en la carpeta
+  "outputs" que aparece junto al programa.
+
+- Puedes copiar todo el ZIP a otro computador y funciona
+  igual, sin instalar nada.
+========================================================

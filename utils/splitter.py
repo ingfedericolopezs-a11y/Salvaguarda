@@ -20,6 +20,7 @@ from .validators import clean_id, split_name
 from .data_processor import (
     _read_excel_safe, _find_header_row, _find_column,
     _format_date, _normalize_genero, _write_with_template,
+    _open_excel_any,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ def analyze_files(master_path: Optional[str], file_paths: List[str]) -> Dict[str
     for fpath in file_paths:
         fname = os.path.basename(fpath)
         try:
-            xl = pd.ExcelFile(fpath)
+            xl = _open_excel_any(fpath)
         except Exception as e:
             logs.append(f"[!] No se pudo leer {fname}: {e}")
             continue
@@ -95,7 +96,7 @@ def analyze_files(master_path: Optional[str], file_paths: List[str]) -> Dict[str
         # ── Case B: generated / PlantillaCargue format (Sheet1 + TIPO_NOVEDAD) ──
         sheet = 'Sheet1' if 'Sheet1' in xl.sheet_names else xl.sheet_names[-1]
         try:
-            df = pd.read_excel(fpath, sheet_name=sheet)
+            df = pd.read_excel(xl, sheet_name=sheet)
         except Exception as e:
             logs.append(f"[!] Error leyendo {fname}: {e}")
             continue
@@ -200,7 +201,7 @@ def _extract_from_raw_sheet(fpath: str, sheet_name: str, is_ingreso: bool,
                             seen: set) -> List[Dict[str, Any]]:
     """Extract normalized records from a raw INGRESOS/RETIROS sheet."""
     try:
-        df_raw = pd.read_excel(fpath, sheet_name=sheet_name, header=None)
+        df_raw = pd.read_excel(_open_excel_any(fpath), sheet_name=sheet_name, header=None)
     except Exception:
         return []
 

@@ -89,7 +89,7 @@ def process_excel_files(
         fname = os.path.basename(fpath)
 
         try:
-            xl = pd.ExcelFile(fpath)
+            xl = _open_excel_any(fpath)
         except Exception as e:
             logs.append(f"[!] Error reading {fname}: {e}")
             continue
@@ -99,7 +99,7 @@ def process_excel_files(
         # so leftover movements from the previous period enter this run.
         if 'Sheet1' in xl.sheet_names:
             try:
-                df_gen = pd.read_excel(fpath, sheet_name='Sheet1')
+                df_gen = pd.read_excel(xl, sheet_name='Sheet1')
                 gen_cols = {str(c).upper().strip() for c in df_gen.columns}
                 required = {'NUMERO_IDENTIFICACION_ASEGURADO', 'TIPO_NOVEDAD',
                             'FECHA_NOVEDAD', 'APELLIDOS_ASEGURADO', 'NOMBRES_ASEGURADO'}
@@ -171,7 +171,7 @@ def process_excel_files(
             logs.append(f"Processing {fname} - Sheet: {sheet_name}")
 
             try:
-                df_raw = pd.read_excel(fpath, sheet_name=sheet_name, header=None)
+                df_raw = pd.read_excel(xl, sheet_name=sheet_name, header=None)
 
                 # Locate header row
                 header_idx = _find_header_row(df_raw, header_search_rows)
@@ -558,28 +558,68 @@ def _clean_cell(val: Any) -> Any:
 
 # Helper functions
 
+def _detect_engine(filepath: str) -> Optional[str]:
+    """Detect the real Excel engine by file content (not extension)."""
+    try:
+        with open(filepath, 'rb') as f:
+            head = f.read(8)
+    except Exception:
+        return None
+    if head[:4] == b'PK\x03\x04':            # ZIP -> modern .xlsx
+        return 'openpyxl'
+    if head[:4] == b'\xd0\xcf\x11\xe0':      # OLE2 -> legacy .xls
+        return 'xlrd'
+    return None                              # unknown -> maybe HTML/CSV
+
+
+def _open_excel_any(filepath: str) -> pd.ExcelFile:
+    """
+    Open a spreadsheet regardless of a wrong extension.
+
+    Handles: real .xlsx, real .xls, .xlsx renamed as .xls, and files whose
+    header is unknown (falls back to trying both engines).
+    """
+    engine = _detect_engine(filepath)
+    if engine:
+        try:
+            return pd.ExcelFile(filepath, engine=engine)
+        except Exception:
+            pass
+    # Fall back: try each engine in turn
+    last_err: Optional[Exception] = None
+    for eng in ('openpyxl', 'xlrd', None):
+        try:
+            return pd.ExcelFile(filepath, engine=eng) if eng else pd.ExcelFile(filepath)
+        except Exception as e:
+            last_err = e
+    raise ValueError(f'No se pudo abrir el archivo como Excel: {last_err}')
+
+
 def _read_excel_safe(filepath: str) -> pd.DataFrame:
     """
-    Read Excel file safely, trying different sheet names.
+    Read a spreadsheet safely, detecting the real format by content.
 
-    Attempts to read 'Sheet1' first, then falls back to the last sheet
-    in the workbook if Sheet1 is not found.
-
-    Args:
-        filepath: Path to the Excel file
-
-    Returns:
-        pd.DataFrame: The read Excel data
-
-    Raises:
-        FileNotFoundError: If file does not exist
-        pd.errors.ParserError: If file cannot be parsed
+    Handles files with the wrong extension (e.g. .xlsx renamed to .xls) and
+    HTML tables exported with an .xls name. Reads 'Sheet1' if present, else
+    the last sheet.
     """
+    # First: content-aware Excel open
     try:
-        return pd.read_excel(filepath, sheet_name="Sheet1")
-    except ValueError:
-        xls: pd.ExcelFile = pd.ExcelFile(filepath)
-        return pd.read_excel(filepath, sheet_name=xls.sheet_names[-1])
+        xls = _open_excel_any(filepath)
+        sheet = 'Sheet1' if 'Sheet1' in xls.sheet_names else xls.sheet_names[-1]
+        return pd.read_excel(xls, sheet_name=sheet)
+    except Exception as excel_err:
+        # Some systems export ".xls" that are really HTML tables
+        try:
+            tables = pd.read_html(filepath)
+            if tables:
+                return tables[0]
+        except Exception:
+            pass
+        raise ValueError(
+            f'No se pudo leer el archivo. Verifica que sea un Excel valido '
+            f'(.xlsx o .xls). Detalle: {excel_err}'
+        )
 
 
 def _find_header_row(df_raw: pd.DataFrame, max_rows: int) -> int:

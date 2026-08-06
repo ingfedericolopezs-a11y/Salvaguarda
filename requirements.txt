@@ -8,3 +8,4 @@ python-dotenv>=1.0.0
 lxml>=4.9.0
 pyxlsb>=1.0.10
 msoffcrypto-tool>=5.0.0
+olefile>=0.46

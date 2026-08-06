@@ -673,8 +673,10 @@ def _read_excel_safe(filepath: str, password: Optional[str] = None) -> pd.DataFr
     # First: content-aware Excel open (handles encryption via _open_excel_any)
     try:
         xls = _open_excel_any(filepath, password=password)
-        sheet = 'Sheet1' if 'Sheet1' in xls.sheet_names else xls.sheet_names[-1]
-        return pd.read_excel(xls, sheet_name=sheet)
+        # Prefer 'Sheet1' (app format); otherwise the first sheet (main roster)
+        sheet = 'Sheet1' if 'Sheet1' in xls.sheet_names else xls.sheet_names[0]
+        raw = pd.read_excel(xls, sheet_name=sheet, header=None)
+        return _normalize_master(raw)
     except ValueError:
         raise  # clear Spanish message (e.g. password-protected) — surface as-is
     except Exception as excel_err:
@@ -691,6 +693,73 @@ def _read_excel_safe(filepath: str, password: Optional[str] = None) -> pd.DataFr
         )
 
 
+def _normalize_master(raw: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize a master roster to the standard column names.
+
+    Handles two layouts:
+    - App format: header in row 0 with NUMERO_IDENTIFICACION_ASEGURADO etc.
+    - Allianz format: company header rows on top, then a header like
+      'NRO POLIZA | NOMBRE ASEG. | TIPO ID | NUM ID ASEG. | FECHA NAC | SEXO |
+       CARGO | CAPITAL ...'
+    """
+    if raw is None or len(raw) == 0:
+        return pd.DataFrame()
+
+    hidx = _find_header_row(raw, 25)
+    if hidx == -1:
+        hidx = 0
+
+    header = [str(c).strip() for c in raw.iloc[hidx].values]
+    data = raw.iloc[hidx + 1:].reset_index(drop=True).copy()
+    data.columns = header
+    upper = [h.upper() for h in header]
+
+    # Already standard (app format)
+    if 'NUMERO_IDENTIFICACION_ASEGURADO' in upper:
+        return data
+
+    def find(keys: List[str]) -> Optional[str]:
+        for i, u in enumerate(upper):
+            for k in keys:
+                if k in u:
+                    return header[i]
+        return None
+
+    id_col     = find(['NUM ID', 'NUM. ID', 'NUMERO_IDENT', 'N° DOC', 'CEDULA', 'DOCUMENTO', 'NUMERO DE ID'])
+    nombre_col = find(['NOMBRE'])
+    nac_col    = find(['NAC'])
+    sexo_col   = find(['SEXO', 'GENERO'])
+    cargo_col  = find(['CARGO', 'OCUPAC'])
+    valor_col  = find(['CAPITAL', 'VALOR ASEG', 'ASEGURAD', 'VLR ASEG'])
+    poliza_col = find(['NRO POLIZA', 'NUMERO_POLIZA', 'NRO. POLIZA', 'POLIZA'])
+    tipoid_col = find(['TIPO ID', 'TIPO_IDENT', 'TIPO DE ID'])
+
+    # If we can't even find id and name, return as-is (avoids crashing)
+    if not id_col or not nombre_col:
+        return data
+
+    out = pd.DataFrame()
+    out['NUMERO_POLIZA'] = data[poliza_col] if poliza_col else config.NUMERO_POLIZA
+    apellidos, nombres = [], []
+    for v in data[nombre_col]:
+        a, n = split_name(v)
+        apellidos.append(a)
+        nombres.append(n)
+    out['APELLIDOS_ASEGURADO'] = apellidos
+    out['NOMBRES_ASEGURADO'] = nombres
+    out['TIPO_IDENTIFICACION_ASEGURADO'] = data[tipoid_col] if tipoid_col else 'CC'
+    out['NUMERO_IDENTIFICACION_ASEGURADO'] = data[id_col]
+    out['CARGO'] = data[cargo_col] if cargo_col else None
+    out['GENERO'] = data[sexo_col] if sexo_col else None
+    out['FECHA_NACIMIENTO_ASEGURADO'] = data[nac_col] if nac_col else None
+    out['VALOR_ASEGURADO_MUERTE'] = data[valor_col] if valor_col else 5000000
+
+    # Keep only rows with a real identification number
+    out = out[out['NUMERO_IDENTIFICACION_ASEGURADO'].apply(lambda x: bool(clean_id(x)) and clean_id(x) != 'NAN')]
+    return out.reset_index(drop=True)
+
+
 def _find_header_row(df_raw: pd.DataFrame, max_rows: int) -> int:
     """
     Find header row by searching for identification-related keywords.
@@ -705,7 +774,8 @@ def _find_header_row(df_raw: pd.DataFrame, max_rows: int) -> int:
     Returns:
         int: 0-based index of header row, or -1 if not found
     """
-    keywords: List[str] = ['IDENTIFICACION', 'C.C.', 'CEDULA', 'N° DOC', 'DOC']
+    keywords: List[str] = ['IDENTIFICACION', 'C.C.', 'CEDULA', 'N° DOC', 'DOC',
+                           'NUM ID', 'NRO POLIZA', 'NUM. ID', 'NOMBRE ASEG']
 
     for i in range(min(max_rows, len(df_raw))):
         row_str: str = " ".join([str(x).upper() for x in df_raw.iloc[i].values])
